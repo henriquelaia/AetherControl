@@ -105,4 +105,42 @@ The **3D Digital Twin** runs on a hardware-accelerated 2.5D/3D perspective proje
    $$\text{Color}(T) = \begin{cases} \text{Cryo Cyan } (\#06\text{B}6\text{D}4) & T \le 35^\circ\text{C} \\ \text{Nominal Emerald } (\#10\text{B}981) & 35^\circ\text{C} < T \le 55^\circ\text{C} \\ \text{Warm Amber } (\#\text{F}59\text{E}0\text{B}) & 55^\circ\text{C} < T \le 72^\circ\text{C} \\ \text{Critical Red } (\#\text{F}43\text{F}5\text{E}) & T > 72^\circ\text{C} \end{cases}$$
 3. **Synchronized Angular Velocities:** 3D rotor blade rotations are directly coupled to real sensor tachometers:
    $$\omega_{\text{rotor}} = \frac{\text{RPM}}{60} \cdot 2\pi \cdot \Delta t$$
-4. **Lifecycle Resource Throttling:** When the 3D twin tab is hidden or the browser window is minimized, the render loop pauses automatically, ensuring `0.0%` background GPU/CPU overhead.
+---
+
+## 6. Execution Lifecycle & Data Flow Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant HW as Hardware Sensors (CPU/GPU/AIO)
+    participant Bridge as C# Native Bridge (P/Invoke)
+    participant Loop as Daemon Control Loop (250ms)
+    participant API as REST HTTP Server (127.0.0.1)
+    participant UI as Studio WebUI & 3D Twin
+
+    loop Every 250ms
+        Loop->>Bridge: QueryDieSensors()
+        Bridge->>HW: nvmlDeviceGetTemperature(), GetSystemTimes()
+        HW-->>Bridge: Raw metrics (die °C, clocks, watts, RPM)
+        Bridge-->>Loop: Native C# Telemetry Struct
+        Loop->>Loop: Evaluate Asymmetric Hysteresis
+        Loop->>Loop: Compute Liquid Inertia & Acoustic Limit
+        Loop->>Loop: Calculate Target PWM %
+        Loop->>HW: Apply PWM via Super I/O / FanController
+    end
+
+    loop Every 800ms
+        UI->>API: GET /api/telemetry
+        API-->>UI: Telemetry JSON Snapshot
+        UI->>UI: Update 4 Bento Metric Cards
+        UI->>UI: Reposition Fan Curve Beacon & Glow
+        UI->>UI: 60 FPS Digital Twin Thermal Plasma Update
+    end
+
+    opt User Customization
+        UI->>API: POST /api/fan/config (Drag node P1-P5)
+        API->>Loop: ApplySplineCurveNodes()
+        Loop->>Loop: Persist to %LOCALAPPDATA%\AetherControl\settings.json
+        API-->>UI: 200 OK Status
+    end
+```
