@@ -530,6 +530,7 @@ html[data-theme="light"] .icon-sun { display: none; }
   margin-bottom: 2px;
   white-space: nowrap;
 }
+.sparkline-wrap canvas,
 .sparkline-box canvas {
   width: 100%;
   height: 42px;

@@ -679,7 +679,8 @@
     const pct = Math.min(1, Math.max(0.04, loadPct / 100));
     circle.style.strokeDashoffset = (circumference * (1 - pct)).toFixed(1);
 
-    const nominalStroke = currentTheme === 'light' ? '#0F172A' : '#FAFAFA';
+    const isGpu = ringId.indexOf('gpu') >= 0;
+    const nominalStroke = isGpu ? '#10B981' : '#06B6D4';
     if (temp >= 82) circle.style.stroke = '#F43F5E';
     else if (temp >= 68) circle.style.stroke = '#F59E0B';
     else circle.style.stroke = nominalStroke;
@@ -1336,8 +1337,8 @@
     }
     const nominalLine = isLight ? '#0F172A' : '#FAFAFA';
     const nominalFill = isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(250, 250, 250, 0.12)';
-    const cpuStroke = snap.cpuTempC >= 82 ? '#F43F5E' : snap.cpuTempC >= 68 ? '#F59E0B' : nominalLine;
-    const cpuFill = snap.cpuTempC >= 82 ? 'rgba(244, 63, 94, 0.18)' : snap.cpuTempC >= 68 ? 'rgba(245, 158, 11, 0.18)' : nominalFill;
+    const cpuStroke = snap.cpuTempC >= 82 ? '#F43F5E' : snap.cpuTempC >= 68 ? '#F59E0B' : '#06B6D4';
+    const cpuFill = snap.cpuTempC >= 82 ? 'rgba(244, 63, 94, 0.18)' : snap.cpuTempC >= 68 ? 'rgba(245, 158, 11, 0.18)' : 'rgba(6, 182, 212, 0.18)';
     drawSmoothSparkline('cpu-sparkline', 'cpu-minmax', cpuHistory, cpuStroke, cpuFill, cpuHoverIdx);
 
     document.getElementById('gpu-name').textContent = gpuShort;

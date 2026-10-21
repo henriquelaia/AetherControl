@@ -3,7 +3,8 @@ param(
     [switch]$PocOnly,
     [switch]$InstallShortcutOnly,
     [switch]$ScanOnly,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [switch]$NoElevate
 )
 
 $ErrorActionPreference = "Continue"
@@ -13,6 +14,23 @@ $WwwRoot = Join-Path $Workspace "src\AetherControl.Daemon\wwwroot"
 $AppDataDir = Join-Path $env:LOCALAPPDATA "AetherControl"
 if (-not (Test-Path $AppDataDir)) { New-Item -ItemType Directory -Path $AppDataDir -Force | Out-Null }
 $ProfilePath = Join-Path $AppDataDir "settings.json"
+
+# Auto-Elevate to Administrator for physical hardware control if running in interactive user session
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin -and -not $ScanOnly -and -not $InstallShortcutOnly -and -not $PocOnly -and -not $NoElevate) {
+    try {
+        Write-Host "  [*] A solicitar permissao de Administrador (UAC) para controlo fisico das ventoinhas..." -ForegroundColor Yellow
+        $psBin = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        if (-not (Test-Path $psBin)) { $psBin = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" }
+        $scriptPath = if ($PSCommandPath) { $PSCommandPath } else { Join-Path $Workspace "AetherControl-NativeDaemon.ps1" }
+        $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+        if ($NoBrowser) { $argList += " -NoBrowser" }
+        $proc = Start-Process -FilePath $psBin -ArgumentList $argList -Verb RunAs -PassThru
+        if ($proc) { exit 0 }
+    } catch {
+        Write-Host "  [!] UAC recusado ou nao disponivel. A continuar em modo monitorizacao..." -ForegroundColor DarkYellow
+    }
+}
 
 # ------------------------------------------------------------------------------
 # 0. Auto-Create Portable Desktop Shortcut ("AetherControl Studio.lnk")
@@ -38,20 +56,35 @@ function Install-AetherDesktopShortcut {
             $sc.IconLocation = "C:\Windows\System32\shell32.dll,13"
         }
         $sc.Save()
-        Write-Host "  [+] Atalho no Ambiente de Trabalho criado: $shortcutFile" -ForegroundColor Green
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($shortcutFile)
+            if ($bytes.Length -gt 0x15) {
+                $bytes[0x15] = $bytes[0x15] -bor 0x20
+                [System.IO.File]::WriteAllBytes($shortcutFile, $bytes)
+            }
+        } catch {}
+        Write-Host "  [+] Atalho no Ambiente de Trabalho criado: $shortcutFile (RunAsAdmin ativo)" -ForegroundColor Green
 
         # Support OneDrive synchronized Desktop if different
         if ($env:OneDrive -and (Test-Path (Join-Path $env:OneDrive "Desktop"))) {
             $oneDriveDesktop = Join-Path $env:OneDrive "Desktop"
             if ($oneDriveDesktop -ne $desktopDir) {
                 try {
-                    $odSc = $wsh.CreateShortcut((Join-Path $oneDriveDesktop "AetherControl Studio.lnk"))
+                    $odLnk = Join-Path $oneDriveDesktop "AetherControl Studio.lnk"
+                    $odSc = $wsh.CreateShortcut($odLnk)
                     $odSc.TargetPath = $sc.TargetPath
                     $odSc.Arguments = $sc.Arguments
                     $odSc.WorkingDirectory = $sc.WorkingDirectory
                     $odSc.Description = $sc.Description
                     $odSc.IconLocation = $sc.IconLocation
                     $odSc.Save()
+                    try {
+                        $odBytes = [System.IO.File]::ReadAllBytes($odLnk)
+                        if ($odBytes.Length -gt 0x15) {
+                            $odBytes[0x15] = $odBytes[0x15] -bor 0x20
+                            [System.IO.File]::WriteAllBytes($odLnk, $odBytes)
+                        }
+                    } catch {}
                 } catch {}
             }
         }
@@ -729,6 +762,10 @@ function Load-AetherSettings {
                 })
             }
             $Script:PredictiveRules = $list
+        }
+        if ($Script:HardwareTopology.cooling.type -eq "Air" -or -not $Script:LiquidConfig.enabled) {
+            $Script:FanConfig.temperatureSource = "MAX_CPU_GPU"
+            $Script:LiquidConfig.radiatorFanSyncToCoolant = $false
         }
     } catch {}
 }
