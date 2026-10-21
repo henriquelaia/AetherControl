@@ -1,7 +1,12 @@
 $ErrorActionPreference = "Stop"
 $RepoUrl = "https://github.com/henriquelaia/AetherControl"
 $ZipUrl  = "https://github.com/henriquelaia/AetherControl/archive/refs/heads/main.zip"
-$InstallDir = Join-Path $env:LOCALAPPDATA "AetherControl"
+$BaseDir = Join-Path $env:LOCALAPPDATA "AetherControl"
+$InstallDir = Join-Path $BaseDir "app"
+
+if (-not (Test-Path $BaseDir)) {
+    New-Item -ItemType Directory -Path $BaseDir -Force | Out-Null
+}
 
 Write-Host ""
 Write-Host "  AetherControl — One-Line Installer" -ForegroundColor Cyan

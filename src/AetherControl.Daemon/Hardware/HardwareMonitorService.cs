@@ -12,14 +12,7 @@ using LibreHardwareMonitor.Hardware;
 
 namespace AetherControl.Daemon.Hardware;
 
-/// <summary>
-/// Master Hardware Sensor Fusion & PWM Control Engine.
-/// Combines:
-/// 1. Direct NVML P/Invoke for NVIDIA GPUs (sub-ms latency, milliwatt power accuracy)
-/// 2. LibreHardwareMonitor Computer (CPU Package/CCD, Super I/O Nuvoton/ITE PWM registers, AMD/Intel GPUs)
-/// 3. Windows Kernel GetSystemTimes / WMI fallback for non-elevated sessions
-/// 4. Hysteresis + Asymmetric Step-Up/Step-Down Fan Controller with BIOS Failsafe Restore
-/// </summary>
+// Hardware sensor polling and PWM fan control service.
 public sealed class HardwareMonitorService : IDisposable
 {
     private readonly Computer _computer;
@@ -35,6 +28,12 @@ public sealed class HardwareMonitorService : IDisposable
     private string _detectedCpuName = "Detecting Processor...";
     private string _detectedGpuName = "Detecting Graphics Adapter...";
     private string _detectedMoboName = "Detecting Motherboard...";
+    private string _detectedSuperIoChip = "Super I/O PWM";
+    private string _detectedBiosVersion = "UEFI";
+    private int _detectedRamGb = 16;
+    private int _detectedRamSpeedMhz = 3200;
+    private string _detectedStorageName = "NVMe SSD";
+    private double _detectedStorageTempC = 38.0;
     private readonly bool _isElevated;
 
     private FanProfileConfig _fanConfig = new();
@@ -48,6 +47,9 @@ public sealed class HardwareMonitorService : IDisposable
     private DateTime _airlockPulseStartUtc = DateTime.MinValue;
     private double _estimatedCoolantTempC = 31.8;
 
+    private string? _identifyChannelId;
+    private DateTime _identifyUntilUtc = DateTime.MinValue;
+
     public bool AntiZeroRpmChatterEnabled { get; set; } = true;
     public double MinimumActiveFanFloorPct { get; set; } = 32.0;
 
@@ -56,6 +58,13 @@ public sealed class HardwareMonitorService : IDisposable
     private readonly List<(string Id, string Name, ISensor? RpmSensor, ISensor? ControlSensor)> _hardwareFans = new();
 
     public TelemetrySnapshot? LatestSnapshot { get; private set; }
+
+    public int TotalRamGb => _detectedRamGb;
+    public int RamSpeedMhz => _detectedRamSpeedMhz;
+    public string BiosVersion => _detectedBiosVersion;
+    public string SuperIoChip => _detectedSuperIoChip;
+    public string PrimaryStorageName => _detectedStorageName;
+    public double PrimaryStorageTempC => _detectedStorageTempC;
 
     public HardwareMonitorService(
         PredictiveCoolingWatchdog watchdog,
@@ -81,9 +90,9 @@ public sealed class HardwareMonitorService : IDisposable
             IsGpuEnabled = true,
             IsMotherboardEnabled = true,
             IsControllerEnabled = true,
+            IsStorageEnabled = true,
             IsMemoryEnabled = false,
-            IsNetworkEnabled = false,
-            IsStorageEnabled = false
+            IsNetworkEnabled = false
         };
 
         try
@@ -111,6 +120,7 @@ public sealed class HardwareMonitorService : IDisposable
                 newConfig.CurvePoints = newConfig.CurvePoints.OrderBy(p => p.TempC).ToList();
             }
             _fanConfig = newConfig;
+            RadiatorFanSyncToCoolant = string.Equals(_fanConfig.TemperatureSource, "LIQUID_COOLANT", StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -131,6 +141,15 @@ public sealed class HardwareMonitorService : IDisposable
         }
     }
 
+    public void IdentifyFanChannel(string channelId)
+    {
+        lock (_syncLock)
+        {
+            _identifyChannelId = channelId;
+            _identifyUntilUtc = DateTime.UtcNow.AddSeconds(3.5);
+        }
+    }
+
     public TelemetrySnapshot PollAndControl()
     {
         lock (_syncLock)
@@ -138,6 +157,11 @@ public sealed class HardwareMonitorService : IDisposable
             DateTime now = DateTime.UtcNow;
             double dtSeconds = Math.Clamp((now - _lastPollUtc).TotalSeconds, 0.05, 5.0);
             _lastPollUtc = now;
+
+            if (_identifyChannelId is not null && now >= _identifyUntilUtc)
+            {
+                _identifyChannelId = null;
+            }
 
             double cpuTemp = 0, cpuPower = 0, cpuClock = 0, cpuTotalLoad = 0, cpuMaxThread = 0, cpuVolt = 0;
             double lhmGpuTemp = 0, lhmGpuHotspot = 0, lhmGpuPower = 0, lhmGpuClock = 0, lhmGpuMemClock = 0, lhmGpuLoad = 0, lhmGpuFanPct = 0;
@@ -230,6 +254,9 @@ public sealed class HardwareMonitorService : IDisposable
                         if (!string.IsNullOrWhiteSpace(hw.Name)) _detectedMoboName = hw.Name;
                         foreach (IHardware sub in hw.SubHardware)
                         {
+                            if (!string.IsNullOrWhiteSpace(sub.Name))
+                                _detectedSuperIoChip = sub.Name;
+
                             foreach (ISensor s in sub.Sensors)
                             {
                                 if (s.SensorType == SensorType.Temperature && s.Value.HasValue && s.Value.Value is > 15 and < 110)
@@ -237,6 +264,18 @@ public sealed class HardwareMonitorService : IDisposable
                                     moboTemp = s.Value.Value;
                                     break;
                                 }
+                            }
+                        }
+                    }
+                    else if (hw.HardwareType == HardwareType.Storage)
+                    {
+                        if (!string.IsNullOrWhiteSpace(hw.Name)) _detectedStorageName = hw.Name;
+                        foreach (ISensor s in hw.Sensors)
+                        {
+                            if (s.SensorType == SensorType.Temperature && s.Value.HasValue && s.Value.Value is > 10 and < 105)
+                            {
+                                _detectedStorageTempC = Math.Round(s.Value.Value, 1);
+                                break;
                             }
                         }
                     }
@@ -306,15 +345,22 @@ public sealed class HardwareMonitorService : IDisposable
             if (gpuPowerW <= 1.0)
                 gpuPowerW = Math.Round(15.0 + (gpuLoadPct * 1.75), 1);
 
+            var liquidStatus = BuildLiquidStatus(now, cpuPower, gpuPowerW, _currentSmoothedPwm);
+
             _watchdog.EvaluateState();
             var activeRule = _watchdog.ActiveRule;
 
-            double rawControlTemp = _fanConfig.TemperatureSource switch
-            {
-                "CPU" => cpuTemp,
-                "GPU" => gpuTemp,
-                _ => Math.Max(cpuTemp, gpuTemp)
-            };
+            bool useCoolant = RadiatorFanSyncToCoolant ||
+                              string.Equals(_fanConfig.TemperatureSource, "LIQUID_COOLANT", StringComparison.OrdinalIgnoreCase);
+
+            double rawControlTemp = useCoolant
+                ? Math.Clamp((_estimatedCoolantTempC - 24.0) * 2.4 + 30.0, 20.0, 100.0)
+                : _fanConfig.TemperatureSource switch
+                {
+                    "CPU" => cpuTemp,
+                    "GPU" => gpuTemp,
+                    _ => Math.Max(cpuTemp, gpuTemp)
+                };
 
             if (rawControlTemp >= _lastEffectiveTempC || (_lastEffectiveTempC - rawControlTemp) >= _fanConfig.HysteresisDeadbandC)
             {
@@ -325,7 +371,11 @@ public sealed class HardwareMonitorService : IDisposable
                 ? _fanConfig.ManualOverridePercent
                 : EvaluatePiecewiseCurve(_lastEffectiveTempC, _fanConfig.CurvePoints);
 
-            string controlSource = _fanConfig.ManualOverrideEnabled ? "Manual Override" : $"Curve ({_fanConfig.ActivePreset})";
+            string controlSource = _fanConfig.ManualOverrideEnabled
+                ? "Manual Override"
+                : useCoolant
+                    ? $"Coolant Sync ({_estimatedCoolantTempC:F1}°C)"
+                    : $"Curve ({_fanConfig.ActivePreset})";
 
             if (!_fanConfig.ManualOverrideEnabled && activeRule is not null && activeRule.PreChargePwmFloorPercent > curveTargetPwm)
             {
@@ -387,7 +437,7 @@ public sealed class HardwareMonitorService : IDisposable
                     GpuShortName: _detectedGpuName,
                     MotherboardName: _detectedMoboName,
                     MoboShortName: _detectedMoboName,
-                    SuperIoChip: "Super I/O PWM",
+                    SuperIoChip: _detectedSuperIoChip,
                     OsDescription: RuntimeInformation.OSDescription,
                     IsElevatedAdmin: _isElevated,
                     GpuBackendDriver: _nvmlAvailable ? "NVIDIA NVML (Ring-3 Native IOCTL)" : "LibreHardwareMonitor / WDDM"
@@ -411,7 +461,7 @@ public sealed class HardwareMonitorService : IDisposable
                 GpuFanPercent: Math.Round(gpuFanPct, 0),
                 MotherboardTempC: Math.Round(moboTemp, 1),
                 FanChannels: fanChannels,
-                LiquidCooling: BuildLiquidStatus(now, cpuPower, gpuPowerW, _currentSmoothedPwm),
+                LiquidCooling: liquidStatus,
                 GpuGuard: new GpuGuardStatus(AntiZeroRpmChatterEnabled, MinimumActiveFanFloorPct, 52.0),
                 Energy: BuildEnergyStatus(dtSeconds, cpuPower, gpuPowerW),
                 ActiveForegroundExe: _watchdog.CurrentForegroundExe,
@@ -456,6 +506,8 @@ public sealed class HardwareMonitorService : IDisposable
         }
 
         double pumpRpm = Math.Round(1200 + (pumpPwm / 100.0) * 1650, 0);
+        int satPct = (int)Math.Clamp(Math.Round(((_estimatedCoolantTempC - 24.0) / 22.0) * 100.0), 10, 100);
+
         return new LiquidCoolingStatus(
             Enabled: true,
             ControllerName: $"{_detectedMoboName} Hybrid W_PUMP",
@@ -465,7 +517,8 @@ public sealed class HardwareMonitorService : IDisposable
             CoolantTempC: _estimatedCoolantTempC,
             CoolantDeltaOverAmbientC: Math.Round(_estimatedCoolantTempC - 26.5, 1),
             RadiatorFanSyncToCoolant: RadiatorFanSyncToCoolant,
-            AntiAirlockPulseActive: AntiAirlockPulseActive
+            AntiAirlockPulseActive: AntiAirlockPulseActive,
+            ThermalEquilibriumPct: satPct
         );
     }
 
@@ -486,36 +539,59 @@ public sealed class HardwareMonitorService : IDisposable
         {
             foreach (var f in _hardwareFans)
             {
+                bool isIdentifying = string.Equals(_identifyChannelId, f.Id, StringComparison.OrdinalIgnoreCase);
+                double channelTarget = isIdentifying ? 100.0 : targetPwm;
+                string channelSource = isIdentifying ? "Identify Test (100%)" : sourceLabel;
+
                 try
                 {
                     if (_isElevated && f.ControlSensor?.Control is not null)
                     {
-                        f.ControlSensor.Control.SetSoftware((float)targetPwm);
+                        f.ControlSensor.Control.SetSoftware((float)channelTarget);
                     }
                 }
                 catch { }
 
-                double curPwm = f.ControlSensor?.Value ?? targetPwm;
+                double curPwm = isIdentifying ? 100.0 : (f.ControlSensor?.Value ?? channelTarget);
                 double curRpm = f.RpmSensor?.Value ?? Math.Round(450 + (curPwm / 100.0) * 1500);
                 list.Add(new FanChannelTelemetry(
                     f.Id,
                     f.Name,
                     Math.Round(curRpm, 0),
                     Math.Round(curPwm, 1),
-                    targetPwm,
+                    channelTarget,
                     _isElevated && f.ControlSensor?.Control is not null,
-                    sourceLabel));
+                    channelSource));
             }
         }
         else
         {
-            double cpuRpm = Math.Round(520 + (targetPwm / 100.0) * 1480);
-            double sys1Rpm = Math.Round(420 + (targetPwm / 100.0) * 1280);
-            double gpuRpm = gpuFanPct > 0 ? Math.Round(600 + (gpuFanPct / 100.0) * 1800) : Math.Round(500 + (targetPwm / 100.0) * 1600);
+            var defaultChannels = new (string Id, string Name, double BaseRpm, double MaxSpanRpm, bool IsGpu)[]
+            {
+                ("W_PUMP", "AIO Liquid Pump (W_PUMP)", 1200, 1650, false),
+                ("CPU_FAN1", "CPU / Radiator PWM #1", 520, 1480, false),
+                ("SYS_FAN1", "Chassis Intake PWM #1", 420, 1280, false),
+                ("GPU_FAN1", "GPU Axial Cooler", 500, 1600, true)
+            };
 
-            list.Add(new("CPU_FAN1", "CPU / AIO Cooler PWM #1", cpuRpm, targetPwm, targetPwm, _isElevated, sourceLabel));
-            list.Add(new("SYS_FAN1", "Chassis Intake PWM #1", sys1Rpm, targetPwm, targetPwm, _isElevated, sourceLabel));
-            list.Add(new("GPU_FAN1", "GPU Dual-Axial Cooler", gpuRpm, gpuFanPct > 0 ? gpuFanPct : targetPwm, targetPwm, true, "NVAPI / Curve Sync"));
+            foreach (var ch in defaultChannels)
+            {
+                bool isIdentifying = string.Equals(_identifyChannelId, ch.Id, StringComparison.OrdinalIgnoreCase);
+                double basePwm = ch.Id == "W_PUMP"
+                    ? (PumpMode == "Silent" ? 70.0 : PumpMode == "Extreme" ? 100.0 : 85.0)
+                    : (ch.IsGpu && gpuFanPct > 0 ? gpuFanPct : targetPwm);
+
+                if (ch.IsGpu && AntiZeroRpmChatterEnabled && basePwm < MinimumActiveFanFloorPct)
+                {
+                    basePwm = MinimumActiveFanFloorPct;
+                }
+
+                double effPwm = isIdentifying ? 100.0 : basePwm;
+                double rpm = Math.Round(ch.BaseRpm + (effPwm / 100.0) * ch.MaxSpanRpm);
+                string src = isIdentifying ? "Identify Test (100%)" : (ch.IsGpu ? "NVAPI / Curve Sync" : sourceLabel);
+
+                list.Add(new(ch.Id, ch.Name, rpm, effPwm, effPwm, _isElevated || ch.IsGpu, src));
+            }
         }
 
         return list;
@@ -602,6 +678,35 @@ public sealed class HardwareMonitorService : IDisposable
                     break;
                 }
             }
+
+            using var biosSearcher = new ManagementObjectSearcher("SELECT SMBIOSBIOSVersion FROM Win32_BIOS");
+            foreach (var item in biosSearcher.Get())
+            {
+                string? biosVer = item["SMBIOSBIOSVersion"]?.ToString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(biosVer))
+                {
+                    _detectedBiosVersion = biosVer;
+                    break;
+                }
+            }
+
+            long totalBytes = 0;
+            int maxSpeed = 0;
+            using var ramSearcher = new ManagementObjectSearcher("SELECT Capacity, ConfiguredClockSpeed, Speed FROM Win32_PhysicalMemory");
+            foreach (var item in ramSearcher.Get())
+            {
+                if (long.TryParse(item["Capacity"]?.ToString(), out long cap))
+                    totalBytes += cap;
+
+                if (int.TryParse(item["ConfiguredClockSpeed"]?.ToString(), out int cfgClk) && cfgClk > 0)
+                    maxSpeed = Math.Max(maxSpeed, cfgClk);
+                else if (int.TryParse(item["Speed"]?.ToString(), out int spd) && spd > 0)
+                    maxSpeed = Math.Max(maxSpeed, spd);
+            }
+            if (totalBytes > 0)
+                _detectedRamGb = Math.Max(1, (int)Math.Round(totalBytes / (1024.0 * 1024.0 * 1024.0)));
+            if (maxSpeed > 0)
+                _detectedRamSpeedMhz = maxSpeed;
         }
         catch { }
     }
@@ -615,6 +720,10 @@ public sealed class HardwareMonitorService : IDisposable
             CollectFansFromHardware(hw);
             foreach (IHardware sub in hw.SubHardware)
             {
+                if (hw.HardwareType == HardwareType.Motherboard && !string.IsNullOrWhiteSpace(sub.Name))
+                {
+                    _detectedSuperIoChip = sub.Name;
+                }
                 CollectFansFromHardware(sub);
             }
         }

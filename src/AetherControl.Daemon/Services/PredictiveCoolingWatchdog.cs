@@ -10,12 +10,7 @@ using AetherControl.Daemon.Models;
 
 namespace AetherControl.Daemon.Services;
 
-/// <summary>
-/// Low-level Windows Process & Foreground Watchdog.
-/// Uses Win32 GetForegroundWindow + QueryFullProcessImageName (PROCESS_QUERY_LIMITED_INFORMATION)
-/// so it works seamlessly with kernel anti-cheat games (EAC, BattlEye, Vanguard) without triggering
-/// OpenProcess VM_READ access violations.
-/// </summary>
+// Foreground process monitor for predictive cooling profiles.
 public sealed class PredictiveCoolingWatchdog
 {
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
@@ -67,6 +62,18 @@ public sealed class PredictiveCoolingWatchdog
     }
 
     public bool RemoveRule(string exeName) => _rules.TryRemove(exeName, out _);
+
+    public void ReplaceAllRules(IEnumerable<PredictiveRule> rules)
+    {
+        _rules.Clear();
+        foreach (var r in rules)
+        {
+            if (r is not null && !string.IsNullOrWhiteSpace(r.ExecutableName))
+            {
+                AddOrUpdateRule(r);
+            }
+        }
+    }
 
     public void EvaluateState()
     {

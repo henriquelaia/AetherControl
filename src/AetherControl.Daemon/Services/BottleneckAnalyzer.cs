@@ -3,12 +3,7 @@ using AetherControl.Daemon.Models;
 
 namespace AetherControl.Daemon.Services;
 
-/// <summary>
-/// Real-Time Hardware Bottleneck Analytics Engine.
-/// Uses an Exponential Moving Average (EMA, alpha = 0.28) to smooth transient spikes
-/// and compares Single-Core CPU thread saturation, Total CPU Package load, GPU Core utilization,
-/// GPU Board Power vs Enforced TDP Limit, VRAM pressure, and Thermal Limits.
-/// </summary>
+// Evaluates CPU, GPU, VRAM, and thermal load balance using an exponential moving average.
 public sealed class BottleneckAnalyzer
 {
     private const double Alpha = 0.28;

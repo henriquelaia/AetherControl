@@ -56,7 +56,8 @@ public sealed record LiquidCoolingStatus(
     double CoolantTempC,
     double CoolantDeltaOverAmbientC,
     bool RadiatorFanSyncToCoolant,
-    bool AntiAirlockPulseActive
+    bool AntiAirlockPulseActive,
+    int ThermalEquilibriumPct = 38
 );
 
 public sealed record GpuGuardStatus(
@@ -110,18 +111,29 @@ public sealed record BottleneckVerdict(
     double VramUsagePercent
 );
 
+public sealed class PersistedUserSettings
+{
+    public FanProfileConfig FanConfig { get; set; } = new();
+    public string PumpMode { get; set; } = "Balanced";
+    public bool RadiatorFanSyncToCoolant { get; set; }
+    public bool AntiZeroRpmChatterEnabled { get; set; } = true;
+    public double MinimumActiveFanFloorPct { get; set; } = 32.0;
+    public bool AcousticEnabled { get; set; } = true;
+    public double MaxAllowedDbCeiling { get; set; } = 38.5;
+    public double ThermalSafetyOverrideTempC { get; set; } = 84.0;
+    public List<PredictiveRule> PredictiveRules { get; set; } = new();
+}
+
 public sealed record TelemetrySnapshot(
     DateTime TimestampUtc,
     SystemHardwareIdentity Identity,
     double DaemonRamMb,
-    // CPU Metrics
     double CpuTempC,
     double CpuPowerWatts,
     double CpuClockMhz,
     double CpuTotalLoadPercent,
     double CpuMaxThreadLoadPercent,
     double CpuVoltageV,
-    // GPU Metrics
     double GpuTempC,
     double GpuHotspotTempC,
     double GpuPowerWatts,
@@ -132,13 +144,11 @@ public sealed record TelemetrySnapshot(
     double GpuVramUsedMb,
     double GpuVramTotalMb,
     double GpuFanPercent,
-    // Motherboard, Fans & Liquid Loop
     double MotherboardTempC,
     List<FanChannelTelemetry> FanChannels,
     LiquidCoolingStatus LiquidCooling,
     GpuGuardStatus GpuGuard,
     EnergyStatus Energy,
-    // Differentiators
     string ActiveForegroundExe,
     PredictiveRule? ActivePredictiveRule,
     int PredictivePurgeRemainingSec,

@@ -2,14 +2,17 @@
 param(
     [switch]$PocOnly,
     [switch]$InstallShortcutOnly,
-    [switch]$ScanOnly
+    [switch]$ScanOnly,
+    [switch]$NoBrowser
 )
 
 $ErrorActionPreference = "Continue"
 $Port = 5175
 $Workspace = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 $WwwRoot = Join-Path $Workspace "src\AetherControl.Daemon\wwwroot"
-$ProfilePath = Join-Path $Workspace "aether-settings.json"
+$AppDataDir = Join-Path $env:LOCALAPPDATA "AetherControl"
+if (-not (Test-Path $AppDataDir)) { New-Item -ItemType Directory -Path $AppDataDir -Force | Out-Null }
+$ProfilePath = Join-Path $AppDataDir "settings.json"
 
 # ------------------------------------------------------------------------------
 # 0. Auto-Create Portable Desktop Shortcut ("AetherControl Studio.lnk")
@@ -35,7 +38,9 @@ function Install-AetherDesktopShortcut {
     }
 }
 
-Install-AetherDesktopShortcut
+if (-not $ScanOnly) {
+    Install-AetherDesktopShortcut
+}
 if ($InstallShortcutOnly) { exit 0 }
 
 # ------------------------------------------------------------------------------
@@ -292,7 +297,7 @@ function Invoke-HardwareTopologyScan {
     }
 
     $usbAio = @(Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue | Where-Object {
-        $_.Name -match "Kraken|Corsair|Asetek|Hydro|LianLi|Arctic|Ryujin|Cooler|AIO|NZXT"
+        $_.Name -match "Kraken|Asetek|Hydro|Commander|AIO|Ryujin|Liquid Freezer" -and $_.Name -notmatch "Audio|Headset|Mouse|Keyboard|Mic"
     } | Select-Object -ExpandProperty Name)
     $aioController = if ($usbAio.Count -gt 0) { $usbAio[0] } else { "$moboShort Hybrid W_PUMP ($superIoChip)" }
 
@@ -302,6 +307,15 @@ function Invoke-HardwareTopologyScan {
 
     $osCaption = if ($osCim) { "$($osCim.Caption.Trim()) ($($osCim.Version))" } else { [System.Environment]::OSVersion.VersionString }
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    $diskCim = Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | Select-Object -First 1
+    $diskName = if ($diskCim.Model) { $diskCim.Model.Trim() } else { "NVMe Solid State Drive" }
+
+    $startupTaskExists = $false
+    try {
+        $null = schtasks.exe /Query /TN "AetherControlDaemon" 2>$null
+        if ($LASTEXITCODE -eq 0) { $startupTaskExists = $true }
+    } catch {}
 
     return @{
         scannedAtUtc = ([DateTime]::UtcNow).ToString("o")
@@ -332,6 +346,10 @@ function Invoke-HardwareTopologyScan {
             speedMhz = $ramSpeedMhz
             dimmCount = [math]::Max(1, $ramSticks.Count)
         }
+        storage = @{
+            name = $diskName
+            tempC = 39
+        }
         cooling = @{
             controller = $aioController
             fanCount = 4
@@ -339,6 +357,7 @@ function Invoke-HardwareTopologyScan {
         os = @{
             caption = $osCaption
             isAdmin = $isAdmin
+            startupEnabled = $startupTaskExists
         }
     }
 }
@@ -416,6 +435,73 @@ $Script:AcousticConfig = @{
 
 $Script:CurrentSmoothedPwm = 30.0
 $Script:LastEffectiveTempC = 42.0
+$Script:IdentifyChannelId = $null
+$Script:IdentifyUntilUtc = [DateTime]::MinValue
+
+function Get-AetherSettingsJson {
+    $state = @{
+        fanConfig = $Script:FanConfig
+        pumpMode = $Script:LiquidConfig.pumpMode
+        radiatorFanSyncToCoolant = $Script:LiquidConfig.radiatorFanSyncToCoolant
+        antiZeroRpmChatterEnabled = $Script:GpuGuardConfig.antiZeroRpmChatterEnabled
+        minimumActiveFanFloorPct = $Script:GpuGuardConfig.minimumActiveFanFloorPct
+        acousticEnabled = $Script:AcousticConfig.enabled
+        maxAllowedDbCeiling = $Script:AcousticConfig.maxAllowedDbCeiling
+        thermalSafetyOverrideTempC = $Script:AcousticConfig.thermalOverrideTempC
+        predictiveRules = $Script:PredictiveRules
+    }
+    return ($state | ConvertTo-Json -Depth 6)
+}
+
+function Save-AetherSettings {
+    try {
+        $json = Get-AetherSettingsJson
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($ProfilePath, $json, $utf8NoBom)
+    } catch {}
+}
+
+function Load-AetherSettings {
+    if (-not (Test-Path $ProfilePath)) { return }
+    try {
+        $raw = Get-Content -Path $ProfilePath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($raw.fanConfig) {
+            $Script:FanConfig.activePreset = [string]$raw.fanConfig.activePreset
+            $Script:FanConfig.temperatureSource = [string]$raw.fanConfig.temperatureSource
+            $Script:FanConfig.hysteresisDeadbandC = [double]$raw.fanConfig.hysteresisDeadbandC
+            $Script:FanConfig.manualOverrideEnabled = [bool]$raw.fanConfig.manualOverrideEnabled
+            $Script:FanConfig.manualOverridePercent = [double]$raw.fanConfig.manualOverridePercent
+            if ($raw.fanConfig.curvePoints) {
+                $pts = @()
+                foreach ($p in $raw.fanConfig.curvePoints) {
+                    $pts += @{ tempC = [double]$p.tempC; pwmPercent = [double]$p.pwmPercent }
+                }
+                $Script:FanConfig.curvePoints = $pts
+            }
+        }
+        if ($raw.pumpMode) { $Script:LiquidConfig.pumpMode = [string]$raw.pumpMode }
+        if ($null -ne $raw.radiatorFanSyncToCoolant) { $Script:LiquidConfig.radiatorFanSyncToCoolant = [bool]$raw.radiatorFanSyncToCoolant }
+        if ($null -ne $raw.antiZeroRpmChatterEnabled) { $Script:GpuGuardConfig.antiZeroRpmChatterEnabled = [bool]$raw.antiZeroRpmChatterEnabled }
+        if ($null -ne $raw.minimumActiveFanFloorPct) { $Script:GpuGuardConfig.minimumActiveFanFloorPct = [double]$raw.minimumActiveFanFloorPct }
+        if ($null -ne $raw.acousticEnabled) { $Script:AcousticConfig.enabled = [bool]$raw.acousticEnabled }
+        if ($null -ne $raw.maxAllowedDbCeiling) { $Script:AcousticConfig.maxAllowedDbCeiling = [double]$raw.maxAllowedDbCeiling }
+        if ($raw.predictiveRules -and $raw.predictiveRules.Count -gt 0) {
+            $list = [System.Collections.ArrayList]@()
+            foreach ($r in $raw.predictiveRules) {
+                [void]$list.Add(@{
+                    executableName = [string]$r.executableName
+                    displayName = [string]$r.displayName
+                    profilePreset = [string]$r.profilePreset
+                    preChargePwmFloorPercent = [double]$r.preChargePwmFloorPercent
+                    cooldownPurgeSeconds = [int]$r.cooldownPurgeSeconds
+                })
+            }
+            $Script:PredictiveRules = $list
+        }
+    } catch {}
+}
+
+Load-AetherSettings
 
 function Get-CurvePwm([double]$temp, $points) {
     if (-not $points -or $points.Count -eq 0) { return 45.0 }
@@ -572,13 +658,27 @@ function Get-LiveTelemetrySnapshot {
     $Script:CurrentSmoothedPwm = [math]::Round($Script:CurrentSmoothedPwm + ($targetPwm - $Script:CurrentSmoothedPwm) * 0.35, 1)
     $estDb = [math]::Round(28.5 + (($Script:CurrentSmoothedPwm - 20.0) / 80.0) * 18.5, 1)
 
-    $cpuRpm = [math]::Round(520 + ($Script:CurrentSmoothedPwm / 100.0) * 1450, 0)
-    $sysRpm = [math]::Round(440 + ($Script:CurrentSmoothedPwm / 100.0) * 1250, 0)
+    if ($Script:IdentifyChannelId -and $now -ge $Script:IdentifyUntilUtc) {
+        $Script:IdentifyChannelId = $null
+    }
+
+    $idPump = ($Script:IdentifyChannelId -eq "AIO_PUMP" -or $Script:IdentifyChannelId -eq "W_PUMP")
+    $idCpu  = ($Script:IdentifyChannelId -eq "CPU_FAN1")
+    $idSys  = ($Script:IdentifyChannelId -eq "SYS_FAN1")
+    $idGpu  = ($Script:IdentifyChannelId -eq "GPU_FAN1")
+
+    $effPumpPwm = if ($idPump) { 100.0 } else { $pumpPwm }
+    $effCpuPwm  = if ($idCpu)  { 100.0 } else { $Script:CurrentSmoothedPwm }
+    $effSysPwm  = if ($idSys)  { 100.0 } else { $Script:CurrentSmoothedPwm }
+
+    $pumpRpm = [math]::Round(1200 + ($effPumpPwm / 100.0) * 1650, 0)
+    $cpuRpm = [math]::Round(520 + ($effCpuPwm / 100.0) * 1450, 0)
+    $sysRpm = [math]::Round(440 + ($effSysPwm / 100.0) * 1250, 0)
 
     # Anti-Zero-RPM Chatter Guard
-    $gpuEffPwm = if ($gpuFanPct -gt 0) { $gpuFanPct } else { $Script:CurrentSmoothedPwm }
-    $gpuSourceLabel = "NVAPI / Curve Sync"
-    if ($Script:GpuGuardConfig.antiZeroRpmChatterEnabled -and $gpuTemp -ge $Script:GpuGuardConfig.preventHotspotSpikeAboveC) {
+    $gpuEffPwm = if ($idGpu) { 100.0 } elseif ($gpuFanPct -gt 0) { $gpuFanPct } else { $Script:CurrentSmoothedPwm }
+    $gpuSourceLabel = if ($idGpu) { "Identify Test (100%)" } else { "NVAPI / Curve Sync" }
+    if (-not $idGpu -and $Script:GpuGuardConfig.antiZeroRpmChatterEnabled -and $gpuTemp -ge $Script:GpuGuardConfig.preventHotspotSpikeAboveC) {
         if ($gpuEffPwm -lt $Script:GpuGuardConfig.minimumActiveFanFloorPct) {
             $gpuEffPwm = [double]$Script:GpuGuardConfig.minimumActiveFanFloorPct
             $gpuSourceLabel = "Zero-RPM Guard Active"
@@ -662,9 +762,9 @@ function Get-LiveTelemetrySnapshot {
         gpuFanPercent = $gpuEffPwm
         motherboardTempC = 38.0
         fanChannels = @(
-            @{ id = "AIO_PUMP"; name = "AIO Liquid Pump (W_PUMP)"; currentRpm = $pumpRpm; currentPwmPercent = $pumpPwm; targetPwmPercent = $pumpPwm; isHardwareControllable = $true; controlSource = "Pump Mode ($($Script:LiquidConfig.pumpMode))" },
-            @{ id = "CPU_FAN1"; name = "Radiator / CPU_FAN ($($hw.motherboard.superIoChip.Split(' ')[0]))"; currentRpm = $cpuRpm; currentPwmPercent = $Script:CurrentSmoothedPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $sourceLabel },
-            @{ id = "SYS_FAN1"; name = "Chassis Intake ($($hw.motherboard.product))"; currentRpm = $sysRpm; currentPwmPercent = $Script:CurrentSmoothedPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $sourceLabel },
+            @{ id = "W_PUMP"; name = "AIO Liquid Pump (W_PUMP)"; currentRpm = $pumpRpm; currentPwmPercent = $effPumpPwm; targetPwmPercent = $effPumpPwm; isHardwareControllable = $true; controlSource = $(if ($idPump) { "Identify Test (100%)" } else { "Pump Mode ($($Script:LiquidConfig.pumpMode))" }) },
+            @{ id = "CPU_FAN1"; name = "Radiator / CPU_FAN ($($hw.motherboard.superIoChip.Split(' ')[0]))"; currentRpm = $cpuRpm; currentPwmPercent = $effCpuPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $(if ($idCpu) { "Identify Test (100%)" } else { $sourceLabel }) },
+            @{ id = "SYS_FAN1"; name = "Chassis Intake ($($hw.motherboard.product))"; currentRpm = $sysRpm; currentPwmPercent = $effSysPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $(if ($idSys) { "Identify Test (100%)" } else { $sourceLabel }) },
             @{ id = "GPU_FAN1"; name = "$($hw.gpu.shortName) Axial Cooler"; currentRpm = $gpuRpm; currentPwmPercent = $gpuEffPwm; targetPwmPercent = $gpuEffPwm; isHardwareControllable = $true; controlSource = $gpuSourceLabel }
         )
         liquidCooling = @{
@@ -776,10 +876,12 @@ Write-Host "  [*] Control Center UI Live at : http://127.0.0.1:$Port" -Foregroun
 Write-Host "  [*] Launching AetherControl Studio Window (PT-PT / EN)..." -ForegroundColor Yellow
 Write-Host "  [*] Press Ctrl+C in this window (or click Shutdown in UI) to stop.`n" -ForegroundColor Yellow
 
-try {
-    Start-Process "msedge.exe" -ArgumentList "--app=http://127.0.0.1:$Port --window-size=1460,930" -ErrorAction Stop
-} catch {
-    Start-Process "http://127.0.0.1:$Port"
+if (-not $NoBrowser) {
+    try {
+        Start-Process "msedge.exe" -ArgumentList "--app=http://127.0.0.1:$Port --window-size=1460,930" -ErrorAction Stop
+    } catch {
+        Start-Process "http://127.0.0.1:$Port"
+    }
 }
 
 $Script:ShouldExit = $false
@@ -851,6 +953,7 @@ try {
                     "Max Cooling" { @(@{tempC=25;pwmPercent=100},@{tempC=50;pwmPercent=100},@{tempC=75;pwmPercent=100},@{tempC=90;pwmPercent=100}) }
                     default { @(@{tempC=30;pwmPercent=22},@{tempC=45;pwmPercent=32},@{tempC=60;pwmPercent=50},@{tempC=72;pwmPercent=74},@{tempC=82;pwmPercent=100}) }
                 }
+                Save-AetherSettings
                 $json = $Script:FanConfig | ConvertTo-Json -Depth 5 -Compress
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
                 $res.ContentType = "application/json"
@@ -872,6 +975,7 @@ try {
                         $Script:FanConfig.curvePoints = $pts
                     }
                 }
+                Save-AetherSettings
                 $json = $Script:FanConfig | ConvertTo-Json -Depth 5 -Compress
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
                 $res.ContentType = "application/json"
@@ -889,6 +993,7 @@ try {
                         $Script:LiquidConfig.antiAirlockPulseStart = [DateTime]::UtcNow
                     }
                 }
+                Save-AetherSettings
                 $res.StatusCode = 200
             }
             elseif ($path -eq "/api/gpuguard/config" -and $req.HttpMethod -eq "POST") {
@@ -898,6 +1003,7 @@ try {
                     if ($null -ne $body.antiZeroRpmChatterEnabled) { $Script:GpuGuardConfig.antiZeroRpmChatterEnabled = [bool]$body.antiZeroRpmChatterEnabled }
                     if ($null -ne $body.minimumActiveFanFloorPct) { $Script:GpuGuardConfig.minimumActiveFanFloorPct = [double]$body.minimumActiveFanFloorPct }
                 }
+                Save-AetherSettings
                 $res.StatusCode = 200
             }
             elseif ($path -eq "/api/predictive/rules" -and $req.HttpMethod -eq "GET") {
@@ -952,11 +1058,61 @@ try {
                 $body = $reader.ReadToEnd() | ConvertFrom-Json
                 if ($null -ne $body.enabled) { $Script:AcousticConfig.enabled = [bool]$body.enabled }
                 if ($null -ne $body.maxAllowedDbCeiling) { $Script:AcousticConfig.maxAllowedDbCeiling = [double]$body.maxAllowedDbCeiling }
+                Save-AetherSettings
                 $res.StatusCode = 200
+            }
+            elseif ($path -match "^/api/fan/identify/(.+)$" -and $req.HttpMethod -eq "POST") {
+                $chId = [Uri]::UnescapeDataString($Matches[1])
+                $Script:IdentifyChannelId = $chId
+                $Script:IdentifyUntilUtc = ([DateTime]::UtcNow).AddSeconds(3.5)
+                $json = (@{ identified = $chId; durationSeconds = 3.5 } | ConvertTo-Json -Compress)
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                $res.ContentType = "application/json"
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            }
+            elseif ($path -eq "/api/profile/export" -and $req.HttpMethod -eq "GET") {
+                Save-AetherSettings
+                $json = Get-AetherSettingsJson
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                $res.ContentType = "application/json"
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            }
+            elseif ($path -eq "/api/profile/import" -and $req.HttpMethod -eq "POST") {
+                $reader = New-Object System.IO.StreamReader($req.InputStream)
+                $bodyText = $reader.ReadToEnd()
+                $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+                [System.IO.File]::WriteAllText($ProfilePath, $bodyText, $utf8NoBom)
+                Load-AetherSettings
+                $json = $Script:FanConfig | ConvertTo-Json -Depth 5 -Compress
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                $res.ContentType = "application/json"
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            }
+            elseif ($path -eq "/api/system/startup") {
+                if ($req.HttpMethod -eq "POST") {
+                    $reader = New-Object System.IO.StreamReader($req.InputStream)
+                    $body = $reader.ReadToEnd() | ConvertFrom-Json
+                    if ($body.enabled) {
+                        $psBin = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+                        $scriptPath = Join-Path $Workspace "AetherControl-NativeDaemon.ps1"
+                        $tr = "`"$psBin`" -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -NoBrowser"
+                        $null = schtasks.exe /Create /TN "AetherControlDaemon" /TR $tr /SC ONLOGON /RL HIGHEST /F 2>$null
+                    } else {
+                        $null = schtasks.exe /Delete /TN "AetherControlDaemon" /F 2>$null
+                    }
+                }
+                $exists = $false
+                $null = schtasks.exe /Query /TN "AetherControlDaemon" 2>$null
+                if ($LASTEXITCODE -eq 0) { $exists = $true }
+                $json = (@{ enabled = $exists } | ConvertTo-Json -Compress)
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                $res.ContentType = "application/json"
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
             }
             elseif ($path -eq "/api/acoustic/calibrate" -and $req.HttpMethod -eq "POST") {
                 $Script:AcousticConfig.isCalibrating = $true
                 $Script:AcousticConfig.calibrationStart = [DateTime]::UtcNow
+                Save-AetherSettings
                 $res.StatusCode = 200
             }
             else {

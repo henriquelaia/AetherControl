@@ -342,6 +342,12 @@
             <input type="range" id="manual-pwm-slider" min="15" max="100" value="50" disabled />
             <strong id="manual-pwm-label" class="mono">50%</strong>
           </div>
+
+          <div class="adv-item adv-profile-actions">
+            <button class="btn-outline-pill press-depth" id="btn-export-profile" data-i18n="btn_export" title="Guardar definições num ficheiro .json">Exportar</button>
+            <button class="btn-outline-pill press-depth" id="btn-import-profile" data-i18n="btn_import" title="Carregar ficheiro .json de perfil">Importar</button>
+            <input type="file" id="file-import-profile" accept=".json" style="display:none;" />
+          </div>
         </div>
 
         <div class="curve-canvas-box">
@@ -378,7 +384,10 @@
                   <svg class="rotor-svg" id="fan-rotor-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/></svg>
                   <span id="fan-name-0">AIO Liquid Pump (W_PUMP)</span>
                 </span>
-                <span class="mono" id="fan-rpm-0">2600 RPM · 85%</span>
+                <span class="fan-right-cluster">
+                  <span class="mono" id="fan-rpm-0">2600 RPM · 85%</span>
+                  <button class="btn-fan-test press-depth" id="fan-test-0" data-fan-id="W_PUMP" data-i18n="btn_test_fan">Testar</button>
+                </span>
               </div>
               <div class="progress-rail"><div class="progress-fill" id="fan-bar-0" style="width:85%"></div></div>
             </div>
@@ -388,7 +397,10 @@
                   <svg class="rotor-svg" id="fan-rotor-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/></svg>
                   <span id="fan-name-1">Radiator / CPU_FAN</span>
                 </span>
-                <span class="mono" id="fan-rpm-1">1180 RPM · 46%</span>
+                <span class="fan-right-cluster">
+                  <span class="mono" id="fan-rpm-1">1180 RPM · 46%</span>
+                  <button class="btn-fan-test press-depth" id="fan-test-1" data-fan-id="CPU_FAN1" data-i18n="btn_test_fan">Testar</button>
+                </span>
               </div>
               <div class="progress-rail"><div class="progress-fill" id="fan-bar-1" style="width:46%"></div></div>
             </div>
@@ -398,7 +410,10 @@
                   <svg class="rotor-svg" id="fan-rotor-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/></svg>
                   <span id="fan-name-2">Chassis Intake (SYS_FAN1)</span>
                 </span>
-                <span class="mono" id="fan-rpm-2">980 RPM · 46%</span>
+                <span class="fan-right-cluster">
+                  <span class="mono" id="fan-rpm-2">980 RPM · 46%</span>
+                  <button class="btn-fan-test press-depth" id="fan-test-2" data-fan-id="SYS_FAN1" data-i18n="btn_test_fan">Testar</button>
+                </span>
               </div>
               <div class="progress-rail"><div class="progress-fill" id="fan-bar-2" style="width:46%"></div></div>
             </div>
@@ -408,7 +423,10 @@
                   <svg class="rotor-svg" id="fan-rotor-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/></svg>
                   <span id="fan-name-3">GPU Axial Cooler</span>
                 </span>
-                <span class="mono" id="fan-rpm-3">1320 RPM · 46%</span>
+                <span class="fan-right-cluster">
+                  <span class="mono" id="fan-rpm-3">1320 RPM · 46%</span>
+                  <button class="btn-fan-test press-depth" id="fan-test-3" data-fan-id="GPU_FAN1" data-i18n="btn_test_fan">Testar</button>
+                </span>
               </div>
               <div class="progress-rail"><div class="progress-fill" id="fan-bar-3" style="width:46%"></div></div>
             </div>
@@ -526,6 +544,11 @@
           <h3 class="card-title" data-i18n="hw_modal_title">Componentes do Seu Computador</h3>
         </div>
         <div class="hw-modal-actions">
+          <label class="fluent-switch" title="Iniciar AetherControl automaticamente ao ligar o PC">
+            <input type="checkbox" id="chk-startup-windows" />
+            <span class="fluent-track"></span>
+            <span class="fluent-lbl" data-i18n="lbl_startup">Iniciar com Windows</span>
+          </label>
           <button class="btn-outline-pill press-depth" id="btn-rescan-now" data-i18n="btn_rescan">Atualizar</button>
           <button class="btn-del" id="btn-close-hw-modal" title="Fechar">&times;</button>
         </div>

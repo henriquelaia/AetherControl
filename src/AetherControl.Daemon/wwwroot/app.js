@@ -179,6 +179,11 @@
       hw_modal_kicker: 'Deteção Automática',
       hw_modal_title: 'Componentes do Seu Computador',
       btn_rescan: 'Atualizar',
+      lbl_startup: 'Iniciar com Windows',
+      btn_export: 'Exportar',
+      btn_import: 'Importar',
+      btn_test_fan: 'Testar',
+      btn_testing_fan: '100%...',
       noise_footer: 'Ruído:',
       bn_BALANCED_title: 'Sistema Equilibrado',
       bn_BALANCED_sum: (cpuT, gpu) => `Sem gargalos · CPU ${cpuT}% · GPU ${gpu}%`,
@@ -255,6 +260,11 @@
       hw_modal_kicker: 'Auto-Discovery',
       hw_modal_title: 'Detected System Hardware',
       btn_rescan: 'Refresh',
+      lbl_startup: 'Start with Windows',
+      btn_export: 'Export',
+      btn_import: 'Import',
+      btn_test_fan: 'Test',
+      btn_testing_fan: '100%...',
       noise_footer: 'Noise:',
       bn_BALANCED_title: 'System Balanced',
       bn_BALANCED_sum: (cpuT, gpu) => `Zero bottlenecks · CPU ${cpuT}% · GPU ${gpu}%`,
@@ -307,6 +317,15 @@
   }
 
   function renderHardwareScanReport(hw) {
+    const startupChk = document.getElementById('chk-startup-windows');
+    if (startupChk && hw.os && typeof hw.os.startupEnabled === 'boolean') {
+      startupChk.checked = hw.os.startupEnabled;
+    }
+
+    const storageText = hw.storage?.name
+      ? `${hw.storage.name} (${hw.storage.tempC || '--'}°C)`
+      : 'NVMe SSD';
+
     hwBody.innerHTML = `
       <div class="hw-scan-item">
         <span class="hw-scan-lbl">PROCESSADOR (CPU)</span>
@@ -329,11 +348,82 @@
         <span class="hw-scan-sub mono">${hw.cooling?.fanCount || 4} Canais de Ventoinha Ativos</span>
       </div>
       <div class="hw-scan-item full-span">
-        <span class="hw-scan-lbl">MEMÓRIA RAM & SISTEMA OPERATIVO</span>
-        <span class="hw-scan-val">${hw.memory?.totalGb || '--'} GB RAM (${hw.memory?.speedMhz || '--'} MHz) · ${hw.os?.caption || '--'}</span>
+        <span class="hw-scan-lbl">MEMÓRIA RAM, DISCO & SISTEMA OPERATIVO</span>
+        <span class="hw-scan-val">${hw.memory?.totalGb || '--'} GB RAM (${hw.memory?.speedMhz || '--'} MHz) · ${storageText}</span>
+        <span class="hw-scan-sub mono">${hw.os?.caption || '--'}</span>
       </div>
     `;
   }
+
+  const startupChkEl = document.getElementById('chk-startup-windows');
+  if (startupChkEl) {
+    startupChkEl.addEventListener('change', async (e) => {
+      try {
+        const res = await fetch('/api/system/startup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: e.target.checked })
+        });
+        const data = await res.json();
+        e.target.checked = Boolean(data.enabled);
+      } catch {}
+    });
+  }
+
+  async function exportUserProfile() {
+    try {
+      const res = await fetch('/api/profile/export');
+      if (!res.ok) return;
+      const profile = await res.json();
+      const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'aether-profile.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {}
+  }
+
+  const exportBtn = document.getElementById('btn-export-profile');
+  const importBtn = document.getElementById('btn-import-profile');
+  const importInput = document.getElementById('file-import-profile');
+
+  if (exportBtn) exportBtn.addEventListener('click', exportUserProfile);
+  if (importBtn && importInput) {
+    importBtn.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const res = await fetch('/api/profile/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: text
+        });
+        if (res.ok) {
+          currentConfig = await res.json();
+          renderFanCurve();
+          loadPredictiveRules();
+        }
+      } catch {}
+      importInput.value = '';
+    });
+  }
+
+  async function triggerFanIdentify(fanId) {
+    if (!fanId) return;
+    try {
+      await fetch(`/api/fan/identify/${encodeURIComponent(fanId)}`, { method: 'POST' });
+    } catch {}
+  }
+
+  document.querySelectorAll('.btn-fan-test').forEach((btn) => {
+    btn.addEventListener('click', () => triggerFanIdentify(btn.getAttribute('data-fan-id')));
+  });
 
   document.getElementById('btn-open-hw-scan').addEventListener('click', () => openHardwareScanModal(false));
   document.getElementById('btn-rescan-now').addEventListener('click', () => openHardwareScanModal(true));
@@ -407,6 +497,8 @@
     { label: () => `${t('pre_game')} — Modo Gaming`, tag: 'Perfil', run: () => triggerPreset('Predictive Gaming') },
     { label: () => `${t('pre_max')} — Velocidade Máxima (100%)`, tag: 'Perfil', run: () => triggerPreset('Max Cooling') },
     { label: () => `Purgar Bolhas do Sistema de Água (AIO)`, tag: 'Água AIO', run: () => document.getElementById('btn-airlock-pulse').click() },
+    { label: () => `Exportar Perfil de Ventoinhas (.json)`, tag: 'Perfil', run: exportUserProfile },
+    { label: () => `Importar Perfil de Ventoinhas (.json)`, tag: 'Perfil', run: () => document.getElementById('file-import-profile')?.click() },
     { label: () => `Inspecionar Componentes do PC`, tag: 'Hardware', run: () => openHardwareScanModal(true) },
     { label: () => `Idioma: Alternar Português / English`, tag: 'Idioma', run: () => applyLanguage(currentLang === 'pt-PT' ? 'en' : 'pt-PT') },
     { label: () => t('btn_stop'), tag: 'Sistema', run: executeDaemonShutdown }
@@ -1192,11 +1284,18 @@
               </svg>
               <span id="fan-name-${i}">${f.name}</span>
             </span>
-            <span class="mono" id="fan-rpm-${i}">-- RPM · --%</span>
+            <span class="fan-right-cluster">
+              <span class="mono" id="fan-rpm-${i}">-- RPM · --%</span>
+              <button class="btn-fan-test press-depth" id="fan-test-${i}" data-fan-id="${f.id}">${t('btn_test_fan')}</button>
+            </span>
           </div>
           <div class="progress-rail"><div class="progress-fill" id="fan-bar-${i}"></div></div>
         </div>
       `).join('');
+
+      fanList.querySelectorAll('.btn-fan-test').forEach((btn) => {
+        btn.addEventListener('click', () => triggerFanIdentify(btn.getAttribute('data-fan-id')));
+      });
     }
 
     snap.fanChannels.forEach((f, i) => {
@@ -1205,10 +1304,18 @@
       const nameEl = document.getElementById(`fan-name-${i}`);
       const rpmEl = document.getElementById(`fan-rpm-${i}`);
       const barEl = document.getElementById(`fan-bar-${i}`);
+      const testBtn = document.getElementById(`fan-test-${i}`);
+      const isTesting = Boolean(f.controlSource && f.controlSource.includes('Identify'));
+
       if (rotorEl) rotorEl.style.animationDuration = `${spinSec}s`;
       if (nameEl) nameEl.textContent = f.name;
       if (rpmEl) rpmEl.textContent = `${Number(f.currentRpm || 0).toFixed(0)} RPM · ${Number(f.currentPwmPercent || 0).toFixed(0)}%`;
       if (barEl) barEl.style.width = `${Math.min(100, Number(f.currentPwmPercent || 0))}%`;
+      if (testBtn) {
+        testBtn.setAttribute('data-fan-id', f.id);
+        testBtn.classList.toggle('testing', isTesting);
+        testBtn.textContent = isTesting ? t('btn_testing_fan') : t('btn_test_fan');
+      }
     });
 
     const predBadge = document.getElementById('predictive-status-badge');
@@ -1236,6 +1343,8 @@
     if (draggingNodeIdx < 0 && curveHoverTempC === null) renderFanCurve();
   }
 
+  let activeWs = null;
+
   function startHttpPollingFallback() {
     if (pollingTimer) return;
     pollingTimer = setInterval(async () => {
@@ -1246,7 +1355,44 @@
     }, 280);
   }
 
+  function stopHttpPollingFallback() {
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
+  }
+
+  function connectWebSocket() {
+    try {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      activeWs = new WebSocket(`${proto}//${location.host}/ws/telemetry`);
+
+      activeWs.addEventListener('open', () => {
+        stopHttpPollingFallback();
+      });
+
+      activeWs.addEventListener('message', (event) => {
+        try {
+          const snap = JSON.parse(event.data);
+          updateDashboard(snap);
+        } catch {}
+      });
+
+      activeWs.addEventListener('close', () => {
+        startHttpPollingFallback();
+        setTimeout(connectWebSocket, 3000);
+      });
+
+      activeWs.addEventListener('error', () => {
+        startHttpPollingFallback();
+      });
+    } catch {
+      startHttpPollingFallback();
+    }
+  }
+
   applyTheme(currentTheme);
   applyLanguage(currentLang);
   startHttpPollingFallback();
+  connectWebSocket();
 })();

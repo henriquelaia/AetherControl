@@ -729,6 +729,10 @@ canvas {
   color: var(--text-secondary);
 }
 .adv-item.grow { flex: 1; min-width: 180px; }
+.adv-profile-actions {
+  margin-left: auto;
+  gap: 6px;
+}
 
 .curve-canvas-box {
   background: var(--bg-subtle);
@@ -849,6 +853,38 @@ canvas {
   height: 14px;
   color: var(--text-secondary);
   animation: slow-spin 1.2s linear infinite;
+}
+
+.fan-right-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-fan-test {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 52px;
+  text-align: center;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-fan-test:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.btn-fan-test.testing {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.45);
+  color: var(--cyan);
 }
 
 .quiet-section {

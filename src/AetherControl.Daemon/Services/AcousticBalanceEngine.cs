@@ -5,13 +5,7 @@ using AetherControl.Daemon.Models;
 
 namespace AetherControl.Daemon.Services;
 
-/// <summary>
-/// Acoustic/Thermal Balance Solver.
-/// Maps PWM Duty % -> A-Weighted Decibels (dBA) using an empirical fan acoustic power law
-/// + live calibration sweep curve.
-/// Finds the maximum PWM % that stays strictly under the user's dB ceiling unless
-/// thermal safety override (default 84°C) is crossed.
-/// </summary>
+// Acoustic estimation and noise ceiling controller.
 public sealed class AcousticBalanceEngine
 {
     private readonly object _lock = new();
