@@ -1283,7 +1283,7 @@ try {
         } catch {
             $res.StatusCode = 500
         } finally {
-            $res.Close()
+            try { $res.Close() } catch {}
         }
     }
 } finally {

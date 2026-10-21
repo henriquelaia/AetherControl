@@ -1908,6 +1908,9 @@
 
   applyTheme(currentTheme);
   applyLanguage(currentLang);
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('theme')) applyTheme(urlParams.get('theme'));
+  if (urlParams.has('tab')) switchRightTab(urlParams.get('tab'));
   startHttpPollingFallback();
   connectWebSocket();
 })();
