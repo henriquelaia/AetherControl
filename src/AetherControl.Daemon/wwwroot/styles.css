@@ -530,7 +530,7 @@ html[data-theme="light"] .icon-sun { display: none; }
   margin-bottom: 2px;
   white-space: nowrap;
 }
-canvas {
+.sparkline-box canvas {
   width: 100%;
   height: 42px;
   max-height: 42px;
@@ -915,16 +915,44 @@ canvas {
   border-color: var(--accent-primary);
 }
 
-.twin-canvas-wrap {
-  position: relative;
+.btn-twin-expand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   background: var(--bg-subtle);
   border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  border-radius: 7px;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-twin-expand-pill:hover {
+  background: var(--bg-pill);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.twin-canvas-wrap {
+  position: relative;
+  background: radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.04) 0%, rgba(0, 0, 0, 0.0) 70%), var(--bg-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 12px;
-  height: 235px;
-  min-height: 235px;
-  max-height: 235px;
+  height: 250px;
+  min-height: 250px;
+  max-height: 250px;
   overflow: hidden;
-  display: flex;
+  display: block;
+}
+
+#digital-twin-canvas {
+  width: 100%;
+  height: 250px;
+  display: block;
+  cursor: grab;
 }
 
 #digital-twin-canvas {
@@ -1312,6 +1340,111 @@ input[type="range"]::-webkit-slider-thumb {
 .hw-scan-sub {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* 3D Digital Twin Modal & Viewport */
+.twin-modal-dialog {
+  width: 980px;
+  max-width: 95vw;
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: 18px;
+  box-shadow: 0 32px 72px -16px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+  margin-top: -6vh;
+}
+
+.twin-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-card);
+}
+
+.twin-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.twin-modal-viewport-wrap {
+  position: relative;
+  background: radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.05) 0%, rgba(0, 0, 0, 0.0) 70%), var(--bg-subtle);
+  height: 540px;
+  min-height: 540px;
+  max-height: 540px;
+  overflow: hidden;
+  display: block;
+}
+
+#digital-twin-modal-canvas {
+  width: 100%;
+  height: 540px;
+  display: block;
+  cursor: grab;
+}
+
+#digital-twin-modal-canvas:active {
+  cursor: grabbing;
+}
+
+.twin-hud-overlay {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.twin-hud-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 16, 20, 0.82);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 5px 11px;
+  font-size: 11px;
+  color: var(--text-primary);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.2s ease;
+}
+
+[data-theme="light"] .twin-hud-chip {
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.twin-hud-chip .hud-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.twin-instructions-pill {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: rgba(16, 16, 20, 0.72);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-default);
+  border-radius: 99px;
+  padding: 4px 12px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  pointer-events: none;
+  z-index: 2;
+}
+
+[data-theme="light"] .twin-instructions-pill {
+  background: rgba(255, 255, 255, 0.82);
 }
 
 @media (max-width: 1260px) {
