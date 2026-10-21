@@ -1,3 +1,7 @@
+param(
+    [switch]$NoLaunch
+)
+
 $ErrorActionPreference = "Stop"
 $RepoUrl = "https://github.com/henriquelaia/AetherControl"
 $ZipUrl  = "https://github.com/henriquelaia/AetherControl/archive/refs/heads/main.zip"
@@ -39,4 +43,8 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 }
 
 $InstallerScript = Join-Path $InstallDir "Install-AetherControl.ps1"
-& $InstallerScript
+if ($NoLaunch) {
+    & $InstallerScript -NoLaunch
+} else {
+    & $InstallerScript
+}

@@ -1,11 +1,51 @@
 # AetherControl — Local Installer & Hardware Scanner
 param(
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [switch]$InstallShortcutOnly
 )
 
 $ErrorActionPreference = "Continue"
 $RepoRoot = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 $DaemonScript = Join-Path $RepoRoot "AetherControl-NativeDaemon.ps1"
+$IcoPath = Join-Path $RepoRoot "assets\aethercontrol.ico"
+
+if ($InstallShortcutOnly) {
+    Write-Host ""
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host "  AETHERCONTROL // CRIADOR DE ATALHOS NO AMBIENTE DE TRABALHO E MENU INICIAR" -ForegroundColor Cyan
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    # Desktop shortcut
+    & $DaemonScript -InstallShortcutOnly
+
+    # Start menu shortcut
+    $startMenuDir = [Environment]::GetFolderPath("Programs")
+    if (Test-Path $startMenuDir) {
+        try {
+            $psExe = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+            if (-not (Test-Path $psExe)) { $psExe = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" }
+            $wsh = New-Object -ComObject WScript.Shell
+            $smShortcut = $wsh.CreateShortcut((Join-Path $startMenuDir "AetherControl Studio.lnk"))
+            $smShortcut.TargetPath = $psExe
+            $smShortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$DaemonScript`""
+            $smShortcut.WorkingDirectory = $RepoRoot
+            $smShortcut.Description = "AetherControl Studio - Hardware Monitor, Liquid Cooling & Predictive Fan Controller"
+            if (Test-Path $IcoPath) {
+                $smShortcut.IconLocation = "$IcoPath,0"
+            } else {
+                $smShortcut.IconLocation = "C:\Windows\System32\shell32.dll,13"
+            }
+            $smShortcut.Save()
+            Write-Host "  [+] Atalho no Menu Iniciar criado: $(Join-Path $startMenuDir 'AetherControl Studio.lnk')" -ForegroundColor Green
+        } catch {}
+    }
+
+    Write-Host ""
+    Write-Host "  [OK] Atalhos configurados com sucesso!" -ForegroundColor Green
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    exit 0
+}
 
 Write-Host ""
 Write-Host "================================================================================" -ForegroundColor Cyan
@@ -47,8 +87,12 @@ if (Test-Path $startMenuDir) {
         $smShortcut.TargetPath = $psExe
         $smShortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$DaemonScript`""
         $smShortcut.WorkingDirectory = $RepoRoot
-        $smShortcut.Description = "AetherControl - Next-Gen Hardware Monitor & Predictive Fan Controller"
-        $smShortcut.IconLocation = "C:\Windows\System32\shell32.dll,13"
+        $smShortcut.Description = "AetherControl Studio - Hardware Monitor, Liquid Cooling & Predictive Fan Controller"
+        if (Test-Path $IcoPath) {
+            $smShortcut.IconLocation = "$IcoPath,0"
+        } else {
+            $smShortcut.IconLocation = "C:\Windows\System32\shell32.dll,13"
+        }
         $smShortcut.Save()
         Write-Host "  [+] Start Menu Shortcut Ready: $(Join-Path $startMenuDir 'AetherControl Studio.lnk')" -ForegroundColor Green
     } catch {}

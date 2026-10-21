@@ -12,7 +12,7 @@
 [![Languages](https://img.shields.io/badge/Language-Portugu%C3%AAs%20(PT--PT)%20%7C%20English-F59E0B?style=flat-square)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
-[**One-Command Install**](#-one-command-install) · [**Hardware Auto-Scanner**](#-universal-hardware-auto-scanner) · [**Architecture**](docs/ARCHITECTURE.md) · [**Supported Hardware**](docs/HARDWARE_SUPPORT.md) · [**Guia em Português (PT-PT)**](#-guia-rápido-em-português-pt-pt)
+[**One-Command Install**](#-one-command-install) · [**Guia Rápido (PT)**](GUIA_RAPIDO.md) · [**Hardware Auto-Scanner**](#-universal-hardware-auto-scanner) · [**Architecture**](docs/ARCHITECTURE.md) · [**Supported Hardware**](docs/HARDWARE_SUPPORT.md) · [**Guia Completo**](docs/USER_GUIDE_PT_EN.md)
 
 </div>
 
@@ -42,7 +42,7 @@ git clone https://github.com/henriquelaia/AetherControl.git
 cd AetherControl
 .\Install-AetherControl.ps1
 ```
-*(Or simply double-click **`Launch-AetherControl.bat`** inside the project folder.)*
+*(Or simply double-click **`Criar-Atalho-Ambiente-Trabalho.bat`** / **`Create-Desktop-Shortcut.bat`** to generate the desktop shortcut, or **`Launch-AetherControl.bat`** to start right away.)*
 
 ---
 
@@ -132,7 +132,7 @@ Verify the full telemetry engine, hysteresis solver, liquid thermal model, and A
 
 ## 🇵🇹 Guia Rápido em Português (PT-PT)
 
-O **AetherControl** inclui suporte nativo para **Português Europeu (`PT-PT`)** e **Inglês (`EN`)**, com estimativa de consumo elétrico em tempo real (`W` e `€/mês`).
+O **AetherControl** inclui suporte nativo para **Português Europeu (`PT-PT`)** e **Inglês (`EN`)**, com estimativa de consumo elétrico em tempo real (`W` e `€/mês`). Para o manual passo-a-passo detalhado, consulte o [**Guia Rápido Completo (`GUIA_RAPIDO.md`)**](GUIA_RAPIDO.md).
 
 ### Instalação num Único Comando
 Abra o **PowerShell** e cole:
@@ -140,16 +140,19 @@ Abra o **PowerShell** e cole:
 irm https://raw.githubusercontent.com/henriquelaia/AetherControl/main/get.ps1 | iex
 ```
 
-1. **Modos Rápidos no Topo:** Alterne com um clique entre **Silencioso**, **Equilibrado**, **Gaming**, **Trabalho** e **Máximo**.
-2. **Modo Claro / Escuro:** Clique no botão **☀️ / 🌙** no canto superior direito para alternar entre o tema claro e o tema escuro.
-3. **Sistema de Água (AIO):** Veja sempre no ecrã principal a temperatura da água (`°C`), velocidade da bomba (`RPM`), saturação térmica, modo da bomba (**Calmo**, **Normal**, **Máx**), sincronização pelas ventoinhas e o botão **Purgar Bolhas**.
-4. **Curva de Velocidade das Ventoinhas:** Arraste qualquer um dos 5 pontos (`P1`–`P5`) no gráfico para ajustar a velocidade das ventoinhas para cada temperatura.
-5. **Desligar em Segurança:** Clique (ou mantenha premido) no botão vermelho **`Sair`** no canto superior direito ou execute [`Stop-AetherControl.bat`](Stop-AetherControl.bat) para encerrar o serviço e devolver o controlo à BIOS.
+1. **Atalhos Automáticos:** O comando cria automaticamente o atalho oficial no seu **Ambiente de Trabalho** e no **Menu Iniciar**. Se descarregou o ZIP, basta dar duplo clique em `Criar-Atalho-Ambiente-Trabalho.bat`.
+2. **Modos Rápidos no Topo:** Alterne com um clique entre **Silencioso**, **Equilibrado**, **Gaming**, **Trabalho** e **Máximo**.
+3. **Modo Claro / Escuro:** Clique no botão **☀️ / 🌙** no canto superior direito para alternar entre o tema claro e o tema escuro.
+4. **Sistema de Água (AIO):** Veja sempre no ecrã principal a temperatura da água (`°C`), velocidade da bomba (`RPM`), saturação térmica, modo da bomba (**Calmo**, **Normal**, **Máx**), sincronização pelas ventoinhas e o botão **Purgar Bolhas**.
+5. **Curva de Velocidade das Ventoinhas:** Arraste qualquer um dos 5 pontos (`P1`–`P5`) no gráfico para ajustar a velocidade das ventoinhas para cada temperatura.
+6. **Gémeo Digital 3D CAD:** Veja o mapa de calor térmico e clique em **Expandir** para inspecionar com rotação e zoom do rato.
+7. **Desligar em Segurança:** Clique no botão vermelho **`Sair`** no canto superior direito ou execute [`Stop-AetherControl.bat`](Stop-AetherControl.bat) para encerrar o serviço e devolver o controlo à BIOS.
 
 ---
 
 ## 📚 Documentation & Guides
 
+- [**Guia Rápido de Instalação e Utilização (`GUIA_RAPIDO.md`)**](GUIA_RAPIDO.md) — Passo-a-passo ilustrado para utilizadores com dúvidas frequentes.
 - [**System Architecture & Engineering Spec (`docs/ARCHITECTURE.md`)**](docs/ARCHITECTURE.md) — C# P/Invoke interop, hysteresis solver, liquid thermal inertia model, and local REST API reference.
 - [**Supported Hardware Matrix (`docs/HARDWARE_SUPPORT.md`)**](docs/HARDWARE_SUPPORT.md) — Supported CPUs, GPUs, Super I/O chips, and AIO liquid coolers.
 - [**Complete User Guide — PT-PT & EN (`docs/USER_GUIDE_PT_EN.md`)**](docs/USER_GUIDE_PT_EN.md) — Full step-by-step manual in Portuguese and English.

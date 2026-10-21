@@ -29,10 +29,32 @@ function Install-AetherDesktopShortcut {
         $sc.TargetPath = $psExe
         $sc.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$Workspace\AetherControl-NativeDaemon.ps1`""
         $sc.WorkingDirectory = $Workspace
-        $sc.Description = "AetherControl - Hardware Telemetry, Liquid Cooling & Predictive Fan Studio"
-        $sc.IconLocation = "C:\Windows\System32\shell32.dll,13"
+        $sc.Description = "AetherControl Studio - Hardware Monitor, Liquid Cooling & Predictive Fan Controller"
+        
+        $ico = Join-Path $Workspace "assets\aethercontrol.ico"
+        if (Test-Path $ico) {
+            $sc.IconLocation = "$ico,0"
+        } else {
+            $sc.IconLocation = "C:\Windows\System32\shell32.dll,13"
+        }
         $sc.Save()
-        Write-Host "  [+] Desktop Shortcut Ready: $shortcutFile" -ForegroundColor Green
+        Write-Host "  [+] Atalho no Ambiente de Trabalho criado: $shortcutFile" -ForegroundColor Green
+
+        # Support OneDrive synchronized Desktop if different
+        if ($env:OneDrive -and (Test-Path (Join-Path $env:OneDrive "Desktop"))) {
+            $oneDriveDesktop = Join-Path $env:OneDrive "Desktop"
+            if ($oneDriveDesktop -ne $desktopDir) {
+                try {
+                    $odSc = $wsh.CreateShortcut((Join-Path $oneDriveDesktop "AetherControl Studio.lnk"))
+                    $odSc.TargetPath = $sc.TargetPath
+                    $odSc.Arguments = $sc.Arguments
+                    $odSc.WorkingDirectory = $sc.WorkingDirectory
+                    $odSc.Description = $sc.Description
+                    $odSc.IconLocation = $sc.IconLocation
+                    $odSc.Save()
+                } catch {}
+            }
+        }
     } catch {
         Write-Host "  [!] Could not create desktop shortcut automatically: $($_.Exception.Message)" -ForegroundColor Yellow
     }
