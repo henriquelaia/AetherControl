@@ -136,6 +136,54 @@ public static class AetherNativeBridgeV2
     [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetMemoryInfo", CallingConvention = CallingConvention.Cdecl)]
     private static extern int NvmlDeviceGetMemoryInfo(IntPtr device, out NvmlMemory mem);
 
+    [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetNumFans", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NvmlDeviceGetNumFans(IntPtr device, out uint numFans);
+
+    [DllImport("nvml.dll", EntryPoint = "nvmlDeviceSetFanSpeed_v2", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NvmlDeviceSetFanSpeed(IntPtr device, uint fanIndex, uint speedPct);
+
+    [DllImport("nvml.dll", EntryPoint = "nvmlDeviceSetDefaultFanSpeed_v2", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NvmlDeviceSetDefaultFanSpeed(IntPtr device, uint fanIndex);
+
+    public static int SetGpuFanSpeed(int pwmPercent)
+    {
+        if (!NvmlSupported || _gpuHandle == IntPtr.Zero) return -1;
+        try
+        {
+            uint speed = (uint)Math.Max(0, Math.Min(100, pwmPercent));
+            uint count = 1;
+            try { NvmlDeviceGetNumFans(_gpuHandle, out count); } catch {}
+            if (count == 0) count = 2;
+            int ret = 0;
+            for (uint i = 0; i < count; i++)
+            {
+                int r = NvmlDeviceSetFanSpeed(_gpuHandle, i, speed);
+                if (r != 0 && ret == 0) ret = r;
+            }
+            return ret;
+        }
+        catch { return -2; }
+    }
+
+    public static int RestoreDefaultGpuFanSpeed()
+    {
+        if (!NvmlSupported || _gpuHandle == IntPtr.Zero) return -1;
+        try
+        {
+            uint count = 1;
+            try { NvmlDeviceGetNumFans(_gpuHandle, out count); } catch {}
+            if (count == 0) count = 2;
+            int ret = 0;
+            for (uint i = 0; i < count; i++)
+            {
+                int r = NvmlDeviceSetDefaultFanSpeed(_gpuHandle, i);
+                if (r != 0 && ret == 0) ret = r;
+            }
+            return ret;
+        }
+        catch { return -2; }
+    }
+
     private static bool _nvmlInitialized = false;
     private static IntPtr _gpuHandle = IntPtr.Zero;
     public static string GpuName = "";
@@ -368,9 +416,9 @@ function Invoke-HardwareTopologyScan {
         $aioController = $usbAio[0]
         $fanCount = 4
     } else {
-        $coolingType = "Liquid"
-        $aioController = "$moboShort Hybrid W_PUMP ($superIoChip)"
-        $fanCount = 4
+        $coolingType = "Air"
+        $aioController = "$moboShort Dynamic Heatsink & Heatpipes ($superIoChip)"
+        $fanCount = 3
     }
 
     $totalRamBytes = ($ramSticks | Measure-Object -Property Capacity -Sum).Sum
@@ -465,7 +513,7 @@ $Script:FanConfig = @{
 }
 
 $Script:LiquidConfig = @{
-    enabled = (-not $Script:HardwareTopology.isLaptop)
+    enabled = ($Script:HardwareTopology.cooling.type -eq "Liquid")
     coolingType = $Script:HardwareTopology.cooling.type
     formFactor = $Script:HardwareTopology.formFactor
     controllerName = $Script:HardwareTopology.cooling.controller
@@ -870,6 +918,17 @@ function Get-LiveTelemetrySnapshot {
     }
     $gpuRpm = [math]::Round(580 + ($gpuEffPwm / 100.0) * 1650, 0)
 
+    # Apply GPU Hardware Fan write if NVML active
+    if ([AetherNativeBridgeV2]::NvmlSupported) {
+        if ($idGpu) {
+            [AetherNativeBridgeV2]::SetGpuFanSpeed(100) | Out-Null
+        } elseif ($hw.os.isAdmin -and $Script:FanConfig.manualOverrideEnabled) {
+            [AetherNativeBridgeV2]::SetGpuFanSpeed([int]$Script:FanConfig.manualOverridePercent) | Out-Null
+        } elseif ($hw.os.isAdmin -and $gpuEffPwm -gt 0) {
+            [AetherNativeBridgeV2]::SetGpuFanSpeed([int]$gpuEffPwm) | Out-Null
+        }
+    }
+
     # Energy & Cost Tracker
     $moboOverheadWatts = 28.0
     $totalSystemWatts = [math]::Round($cpuPower + $gpuPower + $moboOverheadWatts, 1)
@@ -961,6 +1020,12 @@ function Get-LiveTelemetrySnapshot {
                 @{ id = "CPU_FAN"; name = "CPU Blower Fan ($($hw.cpu.shortName))"; currentRpm = $cpuRpm; currentPwmPercent = $effCpuPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $true; controlSource = $(if ($idCpu) { "Identify Test (100%)" } else { "EC Thermal Policy ($($Script:FanConfig.activePreset))" }) },
                 @{ id = "GPU_FAN"; name = "GPU Blower Fan ($($hw.gpu.shortName))"; currentRpm = $gpuRpm; currentPwmPercent = $gpuEffPwm; targetPwmPercent = $gpuEffPwm; isHardwareControllable = $true; controlSource = $(if ($idSys -or $idGpu) { "Identify Test (100%)" } else { "EC Thermal Policy ($($Script:FanConfig.activePreset))" }) }
             )
+        } elseif (-not $Script:LiquidConfig.enabled) {
+            @(
+                @{ id = "CPU_FAN1"; name = "CPU Cooler Fan ($($hw.motherboard.superIoChip.Split(' ')[0]))"; currentRpm = $cpuRpm; currentPwmPercent = $effCpuPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $(if ($idCpu) { "Identify Test (100%)" } else { $sourceLabel }) },
+                @{ id = "SYS_FAN1"; name = "Chassis Intake ($($hw.motherboard.product))"; currentRpm = $sysRpm; currentPwmPercent = $effSysPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $(if ($idSys) { "Identify Test (100%)" } else { $sourceLabel }) },
+                @{ id = "GPU_FAN1"; name = "$($hw.gpu.shortName) Axial Cooler"; currentRpm = $gpuRpm; currentPwmPercent = $gpuEffPwm; targetPwmPercent = $gpuEffPwm; isHardwareControllable = $true; controlSource = $gpuSourceLabel }
+            )
         } else {
             @(
                 @{ id = "W_PUMP"; name = "AIO Liquid Pump (W_PUMP)"; currentRpm = $pumpRpm; currentPwmPercent = $effPumpPwm; targetPwmPercent = $effPumpPwm; isHardwareControllable = $true; controlSource = $(if ($idPump) { "Identify Test (100%)" } else { "Pump Mode ($($Script:LiquidConfig.pumpMode))" }) },
@@ -971,8 +1036,8 @@ function Get-LiveTelemetrySnapshot {
         }
         liquidCooling = @{
             enabled = (-not $hw.isLaptop -and $Script:LiquidConfig.enabled)
-            coolingType = if ($hw.isLaptop) { "Air" } else { "Liquid" }
-            controllerName = if ($hw.isLaptop) { "Dual-Blower Vapor Chamber" } else { $Script:LiquidConfig.controllerName }
+            coolingType = if ($hw.isLaptop -or -not $Script:LiquidConfig.enabled) { "Air" } else { "Liquid" }
+            controllerName = if ($hw.isLaptop) { "Dual-Blower Vapor Chamber" } elseif (-not $Script:LiquidConfig.enabled) { "Dynamic Heatsink & Heatpipes" } else { $Script:LiquidConfig.controllerName }
             pumpMode = $Script:LiquidConfig.pumpMode
             pumpRpm = if ($hw.isLaptop) { 0 } else { $pumpRpm }
             pumpPwmPercent = if ($hw.isLaptop) { 0 } else { $pumpPwm }
@@ -1197,6 +1262,51 @@ try {
                 }
                 $res.StatusCode = 200
             }
+            elseif ($path -eq "/api/cooling/type" -and $req.HttpMethod -eq "POST") {
+                $reader = New-Object System.IO.StreamReader($req.InputStream)
+                $body = $reader.ReadToEnd() | ConvertFrom-Json
+                if ($body -and $body.type) {
+                    $newType = if ($body.type -eq "Liquid") { "Liquid" } else { "Air" }
+                    $Script:HardwareTopology.cooling.type = $newType
+                    $Script:LiquidConfig.coolingType = $newType
+                    $Script:LiquidConfig.enabled = ($newType -eq "Liquid")
+                    if ($newType -eq "Liquid") {
+                        $Script:FanConfig.temperatureSource = "LIQUID_COOLANT"
+                        $Script:LiquidConfig.radiatorFanSyncToCoolant = $true
+                        $Script:HardwareTopology.cooling.controller = "$($Script:HardwareTopology.motherboard.shortName) Hybrid W_PUMP"
+                        $Script:HardwareTopology.cooling.fanCount = 4
+                    } else {
+                        $Script:FanConfig.temperatureSource = "MAX_CPU_GPU"
+                        $Script:LiquidConfig.radiatorFanSyncToCoolant = $false
+                        $Script:HardwareTopology.cooling.controller = "$($Script:HardwareTopology.motherboard.shortName) Dynamic Heatsink & Heatpipes"
+                        $Script:HardwareTopology.cooling.fanCount = 3
+                    }
+                    Save-AetherSettings
+                    $Script:CachedTelemetryBytes = $null
+                }
+                $res.StatusCode = 200
+            }
+            elseif ($path -eq "/api/system/elevate" -and $req.HttpMethod -eq "POST") {
+                try {
+                    $psBin = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+                    $scriptPath = Join-Path $Workspace "AetherControl-NativeDaemon.ps1"
+                    Start-Process -FilePath $psBin -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`"" -Verb RunAs
+                    $json = '{"elevating":true}'
+                    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                    $res.ContentType = "application/json"
+                    $res.OutputStream.Write($bytes, 0, $bytes.Length)
+                    Start-Sleep -Milliseconds 600
+                    $Script:ShouldExit = $true
+                } catch {
+                    $res.StatusCode = 500
+                }
+            }
+            elseif ($path -eq "/api/fan/config" -and $req.HttpMethod -eq "GET") {
+                $json = $Script:FanConfig | ConvertTo-Json -Depth 5 -Compress
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                $res.ContentType = "application/json"
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            }
             elseif ($path -eq "/api/fan/config" -and $req.HttpMethod -eq "POST") {
                 $reader = New-Object System.IO.StreamReader($req.InputStream)
                 $body = $reader.ReadToEnd() | ConvertFrom-Json
@@ -1212,12 +1322,18 @@ try {
                         }
                         $Script:FanConfig.curvePoints = $pts
                     }
+                    if ($Script:FanConfig.manualOverrideEnabled) {
+                        if ([AetherNativeBridgeV2]::NvmlSupported) {
+                            [AetherNativeBridgeV2]::SetGpuFanSpeed([int]$Script:FanConfig.manualOverridePercent) | Out-Null
+                        }
+                    } else {
+                        if ([AetherNativeBridgeV2]::NvmlSupported) {
+                            [AetherNativeBridgeV2]::RestoreDefaultGpuFanSpeed() | Out-Null
+                        }
+                    }
                 }
                 Save-AetherSettings
-                $json = $Script:FanConfig | ConvertTo-Json -Depth 5 -Compress
-                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
-                $res.ContentType = "application/json"
-                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+                $res.StatusCode = 200
             }
             elseif ($path -eq "/api/liquid/config" -and $req.HttpMethod -eq "POST") {
                 $reader = New-Object System.IO.StreamReader($req.InputStream)
@@ -1410,5 +1526,6 @@ try {
         }
     }
 } finally {
+    try { [AetherNativeBridgeV2]::RestoreDefaultGpuFanSpeed() | Out-Null } catch {}
     $Listener.Stop()
 }

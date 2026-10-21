@@ -182,6 +182,18 @@ Assert-Test "Intelligent Laptop Topology & ACPI EC Governor Verification" (
 # Restore native topology
 $null = Invoke-RestMethod -Uri "$BaseUrl/api/hardware/scan?refresh=1&forceFormFactor=Desktop" -Method Get
 
+# 9. Dynamic Air vs Liquid Cooling Topology Toggle (3 vs 4 Fan Channels)
+$null = Invoke-RestMethod -Uri "$BaseUrl/api/cooling/type" -Method Post -Body '{"type":"Liquid"}' -ContentType "application/json"
+$liqSnap = Invoke-RestMethod -Uri "$BaseUrl/api/telemetry" -Method Get
+$null = Invoke-RestMethod -Uri "$BaseUrl/api/cooling/type" -Method Post -Body '{"type":"Air"}' -ContentType "application/json"
+$airSnap = Invoke-RestMethod -Uri "$BaseUrl/api/telemetry" -Method Get
+Assert-Test "Dynamic Air vs Liquid Cooling Topology Toggle" (
+    $liqSnap.fanChannels.Count -eq 4 -and
+    $liqSnap.liquidCooling.enabled -eq $true -and
+    $airSnap.fanChannels.Count -eq 3 -and
+    $airSnap.liquidCooling.enabled -eq $false
+) "Air=3 Channels (CPU/SYS/GPU), Liquid=4 Channels (W_PUMP/CPU/SYS/GPU)"
+
 Write-Host "--------------------------------------------------------------------------------"
 Write-Host "  SUMMARY: $Passed Passed, $Failed Failed" -ForegroundColor $(if ($Failed -eq 0) { "Green" } else { "Red" })
 Write-Host "================================================================================" -ForegroundColor Cyan

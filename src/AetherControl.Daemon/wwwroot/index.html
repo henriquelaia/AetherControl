@@ -82,6 +82,17 @@
       </div>
     </header>
 
+    <!-- Elevation / Admin Hardware Privilege Banner -->
+    <div id="uac-elevation-banner" class="elevation-banner" style="display:none;">
+      <div class="elev-left">
+        <span class="elev-icon">⚠️</span>
+        <span id="elev-banner-text" data-i18n="elev_banner_msg">Modo Monitorização: O Windows requer privilégios de Administrador para controlar fisicamente as ventoinhas.</span>
+      </div>
+      <button class="btn-elevate-action press-depth" id="btn-request-elevate">
+        <span data-i18n="btn_elevate">Desbloquear Controlo Físico (Admin)</span>
+      </button>
+    </div>
+
     <!-- Top telemetry row -->
     <section class="hero-grid-4">
       <!-- CPU -->
@@ -183,17 +194,18 @@
         <div class="card-top">
           <div class="card-title-group">
             <div class="card-label-row">
-              <span class="card-eyebrow" id="cooling-card-eyebrow" data-i18n="liq_kicker">Sistema de Água (AIO)</span>
-              <span class="status-pill cyan-pill" id="water-state-chip" data-i18n="water_active">Fluxo Ativo</span>
+              <span class="card-eyebrow" id="cooling-card-eyebrow" data-i18n="air_kicker">Arrefecimento por Ar & Heatpipes</span>
+              <span class="status-pill cyan-pill" id="water-state-chip" data-i18n="air_active">Dissipação Ativa</span>
             </div>
-            <h2 class="card-title" id="liquid-ctrl-name">Aether HydroLoop AIO</h2>
+            <h2 class="card-title" id="liquid-ctrl-name">Dissipador & Heatpipes</h2>
           </div>
 
-          <div class="segmented-bar compact-seg" id="pump-segmented">
-            <div class="seg-thumb"></div>
-            <button class="seg-pill-btn" data-pump="Silent" data-i18n="pump_silent">Calmo</button>
-            <button class="seg-pill-btn active" data-pump="Balanced" data-i18n="pump_bal">Normal</button>
-            <button class="seg-pill-btn" data-pump="Extreme" data-i18n="pump_ext">Máx</button>
+          <div class="cooling-toggle-wrap">
+            <div class="segmented-bar compact-seg" id="cooling-type-segmented" title="Tipo de Refrigeração instalada no PC">
+              <div class="seg-thumb"></div>
+              <button class="seg-pill-btn active" data-cooling-type="Air" data-i18n="type_air">Ar</button>
+              <button class="seg-pill-btn" data-cooling-type="Liquid" data-i18n="type_liq">Água</button>
+            </div>
           </div>
         </div>
 
@@ -201,8 +213,8 @@
           <div class="hero-temp-display water-temp-color mono-num" id="coolant-temp">31.8°C</div>
           <div class="hero-sub-pills">
             <div class="sub-stat">
-              <span id="cooling-stat1-lbl" data-i18n="m_pump_spd">Bomba</span>
-              <strong class="mono" id="pump-rpm">2600 RPM</strong>
+              <span id="cooling-stat1-lbl" data-i18n="m_blower_avg">Ventoinhas</span>
+              <strong class="mono" id="pump-rpm">1850 RPM</strong>
             </div>
             <div class="sub-stat">
               <span id="cooling-stat2-lbl" data-i18n="m_amb_delta">Acima Amb.</span>
@@ -214,20 +226,27 @@
         <div class="water-footer-box">
           <div class="bar-row">
             <div class="bar-meta">
-              <span id="cooling-sat-lbl" data-i18n="m_eq_sat">Saturação Térmica da Água</span>
+              <span id="cooling-sat-lbl" data-i18n="m_heatpipe_sat">Carga Térmica dos Heatpipes</span>
               <strong class="mono" id="water-sat-pct">38%</strong>
             </div>
             <div class="progress-rail"><div class="progress-fill water-fill" id="bar-water-sat" style="width: 38%;"></div></div>
           </div>
 
           <div class="water-actions-row">
-            <label class="fluent-switch" id="lbl-sync-coolant-wrap" title="Usar a temperatura da água para controlar as ventoinhas">
+            <div class="segmented-bar compact-seg" id="pump-segmented" style="display:none;" title="Velocidade da Bomba AIO">
+              <div class="seg-thumb"></div>
+              <button class="seg-pill-btn" data-pump="Silent" data-i18n="pump_silent">Calmo</button>
+              <button class="seg-pill-btn active" data-pump="Balanced" data-i18n="pump_bal">Normal</button>
+              <button class="seg-pill-btn" data-pump="Extreme" data-i18n="pump_ext">Máx</button>
+            </div>
+
+            <label class="fluent-switch" id="lbl-sync-coolant-wrap" style="display:none;" title="Usar a temperatura da água para controlar as ventoinhas">
               <input type="checkbox" id="chk-sync-coolant" />
               <span class="fluent-track"></span>
               <span class="fluent-lbl" id="cooling-sync-lbl" data-i18n="lbl_sync_coolant">Guiar pela água</span>
             </label>
 
-            <button class="btn-water-pulse press-depth" id="btn-airlock-pulse" title="Oscilar bomba para remover bolhas de ar">
+            <button class="btn-water-pulse press-depth" id="btn-airlock-pulse" style="display:none;" title="Oscilar bomba para remover bolhas de ar">
               <span data-i18n="btn_airlock" id="airlock-btn-text">Purgar Bolhas</span>
             </button>
           </div>

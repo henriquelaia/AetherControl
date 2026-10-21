@@ -1,13 +1,26 @@
 (() => {
-  const cpuHistory = [];
-  const gpuHistory = [];
+  const cpuHistory = Array.from({ length: 60 }, (_, i) => 46 + Math.sin(i * 0.2) * 1.5);
+  const gpuHistory = Array.from({ length: 60 }, (_, i) => 42 + Math.cos(i * 0.2) * 1.2);
   let cpuHoverIdx = -1;
   let gpuHoverIdx = -1;
   let curveHoverTempC = null;
 
   let currentLang = localStorage.getItem('aether_lang') || 'pt-PT';
   let currentTheme = localStorage.getItem('aether_theme') || 'dark';
-  let currentConfig = null;
+  let currentConfig = {
+    activePreset: 'Balanced',
+    temperatureSource: 'MAX_CPU_GPU',
+    hysteresisDeadbandC: 3.0,
+    manualOverrideEnabled: false,
+    manualOverridePercent: 50.0,
+    curvePoints: [
+      { tempC: 30, pwmPercent: 22 },
+      { tempC: 45, pwmPercent: 32 },
+      { tempC: 60, pwmPercent: 50 },
+      { tempC: 72, pwmPercent: 74 },
+      { tempC: 82, pwmPercent: 100 }
+    ]
+  };
   let draggingNodeIdx = -1;
   let hoveredNodeIdx = -1;
   let latestTelemetry = null;
@@ -131,6 +144,10 @@
       m_hotspot: 'Hotspot',
       m_vram_used: 'VRAM',
       hist_60s: 'Últimos 60s',
+      elev_banner_msg: 'Modo Monitorização: O Windows requer privilégios de Administrador para controlar fisicamente as ventoinhas.',
+      btn_elevate: 'Desbloquear Controlo Físico (Admin)',
+      type_air: 'Ar',
+      type_liq: 'Água',
       liq_kicker: 'Sistema de Água (AIO)',
       air_kicker: 'Arrefecimento por Ar & Heatpipes',
       air_title: 'Dissipação Térmica e Heatpipes',
@@ -236,6 +253,10 @@
       m_hotspot: 'Hotspot',
       m_vram_used: 'VRAM',
       hist_60s: 'Last 60s',
+      elev_banner_msg: 'Monitoring Mode: Windows requires Administrator privileges to physically adjust hardware fans.',
+      btn_elevate: 'Unlock Hardware Control (Admin)',
+      type_air: 'Air',
+      type_liq: 'Water',
       liq_kicker: 'Water System (AIO)',
       air_kicker: 'Air Cooling & Heatpipes',
       air_title: 'Thermal Dissipation & Heatpipes',
@@ -1121,6 +1142,44 @@
     }
   });
 
+  const btnElevate = document.getElementById('btn-request-elevate');
+  if (btnElevate) {
+    btnElevate.addEventListener('click', async () => {
+      btnElevate.disabled = true;
+      btnElevate.textContent = currentLang === 'en' ? 'Requesting UAC Elevation...' : 'A solicitar autorização UAC...';
+      try {
+        const res = await fetch('/api/system/elevate', { method: 'POST' });
+        if (res.ok) {
+          setTimeout(() => location.reload(), 2200);
+        } else {
+          btnElevate.disabled = false;
+          btnElevate.textContent = t('btn_elevate');
+        }
+      } catch {
+        btnElevate.disabled = false;
+        btnElevate.textContent = t('btn_elevate');
+      }
+    });
+  }
+
+  document.querySelectorAll('#cooling-type-segmented .seg-pill-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const type = btn.getAttribute('data-cooling-type');
+      document.querySelectorAll('#cooling-type-segmented .seg-pill-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      syncSegmentedThumb(document.getElementById('cooling-type-segmented'));
+      try {
+        await fetch('/api/cooling/type', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type })
+        });
+        const telRes = await fetch('/api/telemetry');
+        if (telRes.ok) updateDashboard(await telRes.json());
+      } catch {}
+    });
+  });
+
   async function pushGpuGuardConfig() {
     await fetch('/api/gpuguard/config', {
       method: 'POST',
@@ -1342,10 +1401,9 @@
         }
 
         if (syncWrap) syncWrap.style.display = 'none';
-        if (airBtn) {
-          airBtn.classList.remove('pulsing');
-          if (airTxt) airTxt.textContent = t('btn_ec_boost');
-        }
+        if (airBtn) airBtn.style.display = 'none';
+        const pumpSeg = document.getElementById('pump-segmented');
+        if (pumpSeg) pumpSeg.style.display = 'none';
       } else {
         if (eyeEl) eyeEl.textContent = t('liq_kicker');
         const pumpRpmVal = Number(lq.pumpRpm ?? 2400);
@@ -1363,6 +1421,16 @@
 
         if (syncWrap) syncWrap.style.display = 'flex';
         if (syncLbl) syncLbl.textContent = t('lbl_sync_coolant');
+        if (airBtn) airBtn.style.display = 'inline-flex';
+
+        const pumpSeg = document.getElementById('pump-segmented');
+        if (pumpSeg) {
+          pumpSeg.style.display = 'flex';
+          pumpSeg.querySelectorAll('.seg-pill-btn').forEach((b) => {
+            b.classList.toggle('active', b.getAttribute('data-pump') === lq.pumpMode);
+          });
+          syncSegmentedThumb(pumpSeg);
+        }
 
         if (lq.antiAirlockPulseActive) {
           waterChip.className = 'status-pill warning';
@@ -1376,6 +1444,21 @@
           if (airTxt) airTxt.textContent = t('btn_airlock');
         }
       }
+
+      const coolingTypeSeg = document.getElementById('cooling-type-segmented');
+      if (coolingTypeSeg) {
+        coolingTypeSeg.querySelectorAll('.seg-pill-btn').forEach((b) => {
+          const m = b.getAttribute('data-cooling-type');
+          b.classList.toggle('active', isAir ? m === 'Air' : m === 'Liquid');
+        });
+        syncSegmentedThumb(coolingTypeSeg);
+      }
+    }
+
+    const elevBanner = document.getElementById('uac-elevation-banner');
+    if (elevBanner) {
+      const isElevated = Boolean(snap.identity && snap.identity.isElevatedAdmin);
+      elevBanner.style.display = isElevated ? 'none' : 'flex';
     }
 
     const bn = snap.bottleneck;
@@ -2338,16 +2421,42 @@
 
   requestAnimationFrame(stepDigitalTwin);
 
-  let activeWs = null;
+  async function loadInitialFanConfig() {
+    try {
+      const res = await fetch('/api/fan/config');
+      if (res.ok) {
+        currentConfig = await res.json();
+        if (tempSourceSelect && currentConfig.temperatureSource) {
+          tempSourceSelect.value = currentConfig.temperatureSource;
+        }
+        if (hysteresisInput && currentConfig.hysteresisDeadbandC) {
+          hysteresisInput.value = currentConfig.hysteresisDeadbandC;
+        }
+        if (manualToggle) {
+          manualToggle.checked = Boolean(currentConfig.manualOverrideEnabled);
+        }
+        if (manualSlider) {
+          manualSlider.disabled = !currentConfig.manualOverrideEnabled;
+          manualSlider.value = currentConfig.manualOverridePercent || 50;
+        }
+        if (manualLabel) {
+          manualLabel.textContent = `${manualSlider.value}%`;
+        }
+        renderFanCurve();
+      }
+    } catch {}
+  }
+
+  async function fetchTelemetryOnce() {
+    try {
+      const res = await fetch('/api/telemetry');
+      if (res.ok) updateDashboard(await res.json());
+    } catch {}
+  }
 
   function startHttpPollingFallback() {
     if (pollingTimer) return;
-    pollingTimer = setInterval(async () => {
-      try {
-        const res = await fetch('/api/telemetry');
-        if (res.ok) updateDashboard(await res.json());
-      } catch {}
-    }, 280);
+    pollingTimer = setInterval(fetchTelemetryOnce, 280);
   }
 
   function stopHttpPollingFallback() {
@@ -2357,41 +2466,14 @@
     }
   }
 
-  function connectWebSocket() {
-    try {
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      activeWs = new WebSocket(`${proto}//${location.host}/ws/telemetry`);
-
-      activeWs.addEventListener('open', () => {
-        stopHttpPollingFallback();
-      });
-
-      activeWs.addEventListener('message', (event) => {
-        try {
-          const snap = JSON.parse(event.data);
-          updateDashboard(snap);
-        } catch {}
-      });
-
-      activeWs.addEventListener('close', () => {
-        startHttpPollingFallback();
-        setTimeout(connectWebSocket, 3000);
-      });
-
-      activeWs.addEventListener('error', () => {
-        startHttpPollingFallback();
-      });
-    } catch {
-      startHttpPollingFallback();
-    }
-  }
-
   applyTheme(currentTheme);
   applyLanguage(currentLang);
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has('theme')) applyTheme(urlParams.get('theme'));
   if (urlParams.has('tab')) switchRightTab(urlParams.get('tab'));
   if (urlParams.has('modal') && urlParams.get('modal') === 'twin') setTimeout(openTwinExpandedModal, 150);
+
+  loadInitialFanConfig();
+  fetchTelemetryOnce();
   startHttpPollingFallback();
-  connectWebSocket();
 })();

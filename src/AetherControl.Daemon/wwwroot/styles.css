@@ -1451,3 +1451,46 @@ input[type="range"]::-webkit-slider-thumb {
   .hero-grid-4 { grid-template-columns: repeat(2, 1fr); }
   .studio-grid-2 { grid-template-columns: 1fr; }
 }
+
+.elevation-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin: 0 0 14px 0;
+  animation: fadeIn 0.25s ease-out;
+}
+.elev-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--amber);
+}
+.elev-icon {
+  font-size: 14px;
+}
+.btn-elevate-action {
+  background: var(--amber);
+  color: #000;
+  border: none;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.btn-elevate-action:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+.cooling-toggle-wrap {
+  flex-shrink: 0;
+}
