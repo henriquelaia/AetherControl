@@ -84,4 +84,25 @@ AetherControl maps target PWM % to estimated acoustic output ($\text{dBA}$) and 
 | `/api/gpuguard/config` | `POST` | Configures the GPU Zero-RPM Chatter Guard minimum active fan floor (%). |
 | `/api/predictive/rules` | `GET / POST / DELETE` | Lists, adds, or deletes Win32 foreground application pre-cooling rules. |
 | `/api/acoustic/config` | `POST` | Updates the maximum allowed decibel (`dBA`) ceiling. |
+| `/api/fan/identify/{id}` | `POST` | Temporarily spins a specific fan header to 100% for 3.5 seconds to identify physical chassis fans. |
+| `/api/profile/export` | `GET` | Exports complete user settings (curves, pump mode, acoustic ceiling, rules) as a shareable JSON file. |
+| `/api/profile/import` | `POST` | Imports and applies a user settings JSON profile. |
+| `/api/system/startup` | `GET / POST` | Checks or configures Windows Scheduled Task for silent start at user logon (`--no-browser`). |
+| `/api/community/profiles` | `GET` | Returns catalog of community-tested thermal and acoustic fan profiles. |
+| `/api/community/profiles/apply/{id}` | `POST` | One-click applies and persists a community fan profile. |
+| `/api/plugins` | `GET` | Lists modular telemetry plugins and their live status. |
+| `/api/plugins/toggle/{id}` | `POST` | Toggles plugin enabled state (e.g. CSV Flight Recorder, Thermal RGB Sync, OSD Bridge). |
 | `/api/daemon/shutdown` | `POST` | Stops the daemon and restores fan control to motherboard BIOS/UEFI. |
+
+---
+
+## 5. 3D Digital Twin & Thermal Heatmap Architecture
+
+The **3D Digital Twin** runs on a hardware-accelerated 2.5D/3D perspective projection pipeline with **zero garbage-collection memory allocations per frame**:
+
+1. **Pre-Allocated Object & Streamline Buffers:** Particle arrays (`airflowPool`, `coolantPool`) and geometric coordinate sets are instantiated once during initialization and mutated in-place each frame.
+2. **Thermal Heatmap Shader:** Dynamically maps live junction temperatures ($T$) to an RGB continuous gradient:
+   $$\text{Color}(T) = \begin{cases} \text{Cryo Cyan } (\#06\text{B}6\text{D}4) & T \le 35^\circ\text{C} \\ \text{Nominal Emerald } (\#10\text{B}981) & 35^\circ\text{C} < T \le 55^\circ\text{C} \\ \text{Warm Amber } (\#\text{F}59\text{E}0\text{B}) & 55^\circ\text{C} < T \le 72^\circ\text{C} \\ \text{Critical Red } (\#\text{F}43\text{F}5\text{E}) & T > 72^\circ\text{C} \end{cases}$$
+3. **Synchronized Angular Velocities:** 3D rotor blade rotations are directly coupled to real sensor tachometers:
+   $$\omega_{\text{rotor}} = \frac{\text{RPM}}{60} \cdot 2\pi \cdot \Delta t$$
+4. **Lifecycle Resource Throttling:** When the 3D twin tab is hidden or the browser window is minimized, the render loop pauses automatically, ensuring `0.0%` background GPU/CPU overhead.

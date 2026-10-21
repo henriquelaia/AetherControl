@@ -509,8 +509,23 @@
   const cmdList = document.getElementById('cmd-results-list');
   let cmdSelectedIdx = 0;
 
+  function switchRightTab(tabId) {
+    const tabsBar = document.getElementById('right-panel-tabs');
+    if (!tabsBar) return;
+    tabsBar.querySelectorAll('.seg-pill-btn').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
+    });
+    syncSegmentedThumb(tabsBar);
+    document.querySelectorAll('.tab-pane').forEach((pane) => {
+      pane.style.display = pane.id === tabId ? 'flex' : 'none';
+    });
+  }
+
   const commandActions = [
     { label: () => `Tema: Alternar Modo Claro (White) / Modo Escuro (Dark)`, tag: 'Aparência', run: () => applyTheme(currentTheme === 'dark' ? 'light' : 'dark') },
+    { label: () => `Gémeo 3D: Ver Heatmap Térmico e Fluxo de Ar 3D`, tag: '3D Twin', run: () => switchRightTab('tab-twin') },
+    { label: () => `Ventoinhas: Ver e Testar Canais Físicos`, tag: 'Ventoinhas', run: () => switchRightTab('tab-fans') },
+    { label: () => `Comunidade: Perfis Populares e Plugins`, tag: 'Ecosistema', run: () => switchRightTab('tab-ecosystem') },
     { label: () => `${t('pre_silent')} — Modo Silencioso`, tag: 'Perfil', run: () => triggerPreset('Silent') },
     { label: () => `${t('pre_bal')} — Modo Equilibrado`, tag: 'Perfil', run: () => triggerPreset('Balanced') },
     { label: () => `${t('pre_game')} — Modo Gaming`, tag: 'Perfil', run: () => triggerPreset('Predictive Gaming') },
