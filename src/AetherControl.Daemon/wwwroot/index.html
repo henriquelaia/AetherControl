@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="pt-PT" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AetherControl</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="shell-container">
+    <!-- Top navigation -->
+    <header class="top-navbar">
+      <div class="nav-brand-cluster">
+        <div class="brand-badge">
+          <svg class="brand-rotor" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v5M12 17v5M2 12h5M17 12h5M4.93 4.93l3.54 3.54M15.54 15.54l3.54 3.54M4.93 19.07l3.54-3.54M15.54 8.46l3.54-3.54"/>
+          </svg>
+          <span class="brand-name">Aether</span>
+        </div>
+
+        <button class="hw-chip press-depth" id="btn-open-hw-scan" title="Ver componentes detetados no PC">
+          <span class="status-dot"></span>
+          <span id="hw-summary">A analisar PC...</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Cooling presets -->
+      <div class="segmented-bar mode-selector" id="preset-segmented">
+        <div class="seg-thumb"></div>
+        <button class="seg-pill-btn btn-preset" data-preset="Silent" data-i18n="pre_silent">Silencioso</button>
+        <button class="seg-pill-btn btn-preset active" data-preset="Balanced" data-i18n="pre_bal">Equilibrado</button>
+        <button class="seg-pill-btn btn-preset" data-preset="Predictive Gaming" data-i18n="pre_game">Gaming</button>
+        <button class="seg-pill-btn btn-preset" data-preset="Heavy Compute" data-i18n="pre_comp">Trabalho</button>
+        <button class="seg-pill-btn btn-preset" data-preset="Max Cooling" data-i18n="pre_max">Máximo</button>
+      </div>
+
+      <div class="nav-actions-cluster">
+        <div class="energy-badge mono" id="energy-pill" title="Consumo elétrico estimado">-- W · -- €/mês</div>
+
+        <button class="icon-btn press-depth" id="btn-open-cmd" title="Comandos Rápidos (Ctrl + K)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <kbd class="mono">⌘K</kbd>
+        </button>
+
+        <button class="icon-btn press-depth" id="btn-theme-toggle" title="Alternar Modo Claro / Escuro">
+          <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+
+        <div class="segmented-bar compact-seg" id="lang-segmented">
+          <div class="seg-thumb"></div>
+          <button class="seg-pill-btn active" id="btn-lang-pt">PT</button>
+          <button class="seg-pill-btn" id="btn-lang-en">EN</button>
+        </div>
+
+        <button class="btn-power-off press-depth" id="btn-stop-daemon" title="Desligar serviço e devolver controlo à BIOS">
+          <span class="hold-fill"></span>
+          <span class="power-content">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
+            </svg>
+            <span data-i18n="btn_stop" id="stop-btn-label">Sair</span>
+          </span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Top telemetry row -->
+    <section class="hero-grid-4">
+      <!-- CPU -->
+      <article class="bento-card hero-card" id="card-cpu">
+        <div class="card-top">
+          <div class="card-title-group">
+            <div class="card-label-row">
+              <span class="card-eyebrow" data-i18n="cpu_kicker">Processador</span>
+              <span class="status-pill nominal" id="cpu-state-chip">Normal</span>
+            </div>
+            <h2 class="card-title" id="cpu-name">A detetar CPU...</h2>
+          </div>
+
+          <div class="radial-gauge">
+            <svg class="radial-svg" viewBox="0 0 76 76">
+              <circle class="radial-track" cx="38" cy="38" r="31"/>
+              <circle class="radial-progress" id="cpu-ring" cx="38" cy="38" r="31" stroke-dasharray="194.8" stroke-dashoffset="90"/>
+            </svg>
+            <span class="radial-pct mono" id="cpu-load-ring">0%</span>
+          </div>
+        </div>
+
+        <div class="hero-metric-row">
+          <div class="hero-temp-display mono-num" id="cpu-temp">--°C</div>
+          <div class="hero-sub-pills">
+            <div class="sub-stat">
+              <span data-i18n="m_pkg_power">Consumo</span>
+              <strong class="mono" id="cpu-power">-- W</strong>
+            </div>
+            <div class="sub-stat">
+              <span data-i18n="m_peak_clock">Relógio</span>
+              <strong class="mono" id="cpu-clock">-- GHz</strong>
+            </div>
+            <div class="sub-stat">
+              <span data-i18n="m_core_volt">Tensão</span>
+              <strong class="mono" id="cpu-volt">-- V</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="sparkline-wrap">
+          <div class="spark-meta">
+            <span data-i18n="hist_60s">Últimos 60s</span>
+            <span class="mono" id="cpu-minmax">--°C – --°C</span>
+          </div>
+          <canvas id="cpu-sparkline" height="44"></canvas>
+        </div>
+      </article>
+
+      <!-- GPU -->
+      <article class="bento-card hero-card" id="card-gpu">
+        <div class="card-top">
+          <div class="card-title-group">
+            <div class="card-label-row">
+              <span class="card-eyebrow" data-i18n="gpu_kicker">Placa Gráfica</span>
+              <span class="status-pill nominal" id="gpu-state-chip">Normal</span>
+            </div>
+            <h2 class="card-title" id="gpu-name">A detetar GPU...</h2>
+          </div>
+
+          <div class="radial-gauge">
+            <svg class="radial-svg" viewBox="0 0 76 76">
+              <circle class="radial-track" cx="38" cy="38" r="31"/>
+              <circle class="radial-progress" id="gpu-ring" cx="38" cy="38" r="31" stroke-dasharray="194.8" stroke-dashoffset="90"/>
+            </svg>
+            <span class="radial-pct mono" id="gpu-load-ring">0%</span>
+          </div>
+        </div>
+
+        <div class="hero-metric-row">
+          <div class="hero-temp-display mono-num" id="gpu-temp">--°C</div>
+          <div class="hero-sub-pills">
+            <div class="sub-stat">
+              <span data-i18n="m_board_pwr">Potência</span>
+              <strong class="mono" id="gpu-power">-- W</strong>
+            </div>
+            <div class="sub-stat">
+              <span data-i18n="m_hotspot">Hotspot</span>
+              <strong class="mono" id="gpu-hotspot">-- °C</strong>
+            </div>
+            <div class="sub-stat">
+              <span data-i18n="m_vram_used">VRAM</span>
+              <strong class="mono" id="gpu-vram">-- GB</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="sparkline-wrap">
+          <div class="spark-meta">
+            <span data-i18n="hist_60s">Últimos 60s</span>
+            <span class="mono" id="gpu-minmax">--°C – --°C</span>
+          </div>
+          <canvas id="gpu-sparkline" height="44"></canvas>
+        </div>
+      </article>
+
+      <!-- Water / AIO cooling -->
+      <article class="bento-card hero-card" id="card-water">
+        <div class="card-top">
+          <div class="card-title-group">
+            <div class="card-label-row">
+              <span class="card-eyebrow" data-i18n="liq_kicker">Sistema de Água (AIO)</span>
+              <span class="status-pill cyan-pill" id="water-state-chip" data-i18n="water_active">Fluxo Ativo</span>
+            </div>
+            <h2 class="card-title" id="liquid-ctrl-name">Aether HydroLoop AIO</h2>
+          </div>
+
+          <div class="segmented-bar compact-seg" id="pump-segmented">
+            <div class="seg-thumb"></div>
+            <button class="seg-pill-btn" data-pump="Silent" data-i18n="pump_silent">Calmo</button>
+            <button class="seg-pill-btn active" data-pump="Balanced" data-i18n="pump_bal">Normal</button>
+            <button class="seg-pill-btn" data-pump="Extreme" data-i18n="pump_ext">Máx</button>
+          </div>
+        </div>
+
+        <div class="hero-metric-row">
+          <div class="hero-temp-display water-temp-color mono-num" id="coolant-temp">31.8°C</div>
+          <div class="hero-sub-pills">
+            <div class="sub-stat">
+              <span data-i18n="m_pump_spd">Bomba</span>
+              <strong class="mono" id="pump-rpm">2600 RPM</strong>
+            </div>
+            <div class="sub-stat">
+              <span data-i18n="m_amb_delta">Acima Amb.</span>
+              <strong class="mono" id="coolant-delta">+7.8°C</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="water-footer-box">
+          <div class="bar-row">
+            <div class="bar-meta">
+              <span data-i18n="m_eq_sat">Saturação Térmica da Água</span>
+              <strong class="mono" id="water-sat-pct">38%</strong>
+            </div>
+            <div class="progress-rail"><div class="progress-fill water-fill" id="bar-water-sat" style="width: 38%;"></div></div>
+          </div>
+
+          <div class="water-actions-row">
+            <label class="fluent-switch" title="Usar a temperatura da água para controlar as ventoinhas">
+              <input type="checkbox" id="chk-sync-coolant" />
+              <span class="fluent-track"></span>
+              <span class="fluent-lbl" data-i18n="lbl_sync_coolant">Guiar pela água</span>
+            </label>
+
+            <button class="btn-water-pulse press-depth" id="btn-airlock-pulse" title="Oscilar bomba para remover bolhas de ar">
+              <span data-i18n="btn_airlock" id="airlock-btn-text">Purgar Bolhas</span>
+            </button>
+          </div>
+        </div>
+      </article>
+
+      <!-- System balance -->
+      <article class="bento-card hero-card" id="bottleneck-banner">
+        <div class="card-top">
+          <div class="card-title-group">
+            <div class="card-label-row">
+              <span class="card-eyebrow" data-i18n="bn_tag">Saúde &amp; Equilíbrio</span>
+              <span class="status-pill nominal" id="bn-badge">Ideal</span>
+            </div>
+            <h2 class="card-title" id="bn-verdict">Sistema Equilibrado</h2>
+          </div>
+          <button class="btn-copy-mini press-depth" id="btn-copy-telemetry" title="Copiar resumo do sistema">
+            <svg class="icon-copy" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <svg class="icon-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.4">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span data-i18n="btn_copy">Copiar</span>
+          </button>
+        </div>
+
+        <p class="health-desc" id="bn-summary">Tudo a funcionar perfeitamente sem sobrecarga.</p>
+
+        <div class="clean-bars-group">
+          <div class="bar-row">
+            <div class="bar-meta"><span data-i18n="bn_m_thread">Processador (CPU)</span><strong class="mono" id="bn-cpu-thread">0%</strong></div>
+            <div class="progress-rail"><div class="progress-fill" id="bar-cpu-thread"></div></div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-meta"><span data-i18n="bn_m_gpu">Placa Gráfica (GPU)</span><strong class="mono" id="bn-gpu-core">0%</strong></div>
+            <div class="progress-rail"><div class="progress-fill" id="bar-gpu-core"></div></div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-meta"><span data-i18n="bn_m_vram">Memória Gráfica (VRAM)</span><strong class="mono" id="bn-vram">0%</strong></div>
+            <div class="progress-rail"><div class="progress-fill" id="bar-vram"></div></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- Bottom control row -->
+    <section class="studio-grid-2">
+      <!-- Fan curve editor -->
+      <article class="bento-card curve-studio-card">
+        <div class="curve-header">
+          <div>
+            <span class="card-eyebrow" data-i18n="curve_kicker">Controlo Inteligente</span>
+            <h2 class="card-title" data-i18n="curve_title">Curva de Velocidade das Ventoinhas</h2>
+          </div>
+
+          <div class="curve-header-right">
+            <div class="live-operating-pill mono">
+              <span class="pulse-dot"></span>
+              <span id="hud-live-temp">54°C</span>
+              <span class="text-muted">→</span>
+              <strong id="hud-target-out">46% · 1180 RPM</strong>
+            </div>
+
+            <button class="btn-outline-pill press-depth" id="btn-toggle-advanced">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+              <span data-i18n="btn_advanced">Opções</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="advanced-drawer" id="advanced-curve-drawer" style="display:none;">
+          <div class="adv-item">
+            <span data-i18n="lbl_temp_src">Guiar por</span>
+            <select id="temp-source-select">
+              <option value="MAX_CPU_GPU" data-i18n="opt_max">Mais Quente (CPU/GPU)</option>
+              <option value="LIQUID_COOLANT" data-i18n="opt_liq">Temperatura da Água</option>
+              <option value="CPU" data-i18n="opt_cpu">Apenas Processador</option>
+              <option value="GPU" data-i18n="opt_gpu">Apenas Placa Gráfica</option>
+            </select>
+          </div>
+
+          <div class="adv-item">
+            <span data-i18n="lbl_hyst">Suavização</span>
+            <div class="num-box">
+              <input type="number" id="hysteresis-input" class="mono" value="3.0" min="0" max="10" step="0.5" />
+              <span>°C</span>
+            </div>
+          </div>
+
+          <div class="adv-item">
+            <label class="fluent-switch">
+              <input type="checkbox" id="chk-gpu-guard" checked />
+              <span class="fluent-track"></span>
+              <span class="fluent-lbl" data-i18n="guard_floor">Evitar Paragem GPU</span>
+            </label>
+            <div class="num-box">
+              <input type="number" id="num-gpu-guard-pct" class="mono" value="32" min="25" max="60" />
+              <span>%</span>
+            </div>
+          </div>
+
+          <div class="adv-item grow">
+            <label class="fluent-switch">
+              <input type="checkbox" id="manual-override-toggle" />
+              <span class="fluent-track"></span>
+              <span class="fluent-lbl" data-i18n="lbl_manual">Velocidade Fixa</span>
+            </label>
+            <input type="range" id="manual-pwm-slider" min="15" max="100" value="50" disabled />
+            <strong id="manual-pwm-label" class="mono">50%</strong>
+          </div>
+        </div>
+
+        <div class="curve-canvas-box">
+          <svg id="fan-curve-svg"></svg>
+        </div>
+
+        <div class="curve-bottom-bar">
+          <div class="curve-nodes-strip mono" id="curve-points-strip"></div>
+          <span class="mono text-muted" id="hud-live-noise">Ruído: -- dBA</span>
+        </div>
+      </article>
+
+      <!-- Channels, acoustics & game rules -->
+      <article class="bento-card right-tabs-card">
+        <div class="tabs-header">
+          <div class="segmented-bar full-width-seg" id="right-panel-tabs">
+            <div class="seg-thumb"></div>
+            <button class="seg-pill-btn active" data-tab="tab-fans" data-i18n="tab_fans">Ventoinhas</button>
+            <button class="seg-pill-btn" data-tab="tab-quiet" data-i18n="tab_quiet">Silêncio (dBA)</button>
+            <button class="seg-pill-btn" data-tab="tab-games" data-i18n="tab_games">Modo Jogo</button>
+          </div>
+        </div>
+
+        <!-- Active fans -->
+        <div class="tab-pane active" id="tab-fans">
+          <div class="pane-top-row">
+            <span class="pane-subtitle" id="mobo-name">A detetar Motherboard...</span>
+            <span class="status-pill nominal mono" id="target-pwm-badge">--% PWM</span>
+          </div>
+          <div id="fan-channels-list" class="clean-fans-list">
+            <div class="fan-item" id="fan-row-0">
+              <div class="fan-item-top">
+                <span class="fan-rotor-wrap">
+                  <svg class="rotor-svg" id="fan-rotor-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/></svg>
+                  <span id="fan-name-0">AIO Liquid Pump (W_PUMP)</span>
+                </span>
+                <span class="mono" id="fan-rpm-0">2600 RPM · 85%</span>
+              </div>
+              <div class="progress-rail"><div class="progress-fill" id="fan-bar-0" style="width:85%"></div></div>
+            </div>
+            <div class="fan-item" id="fan-row-1">
+              <div class="fan-item-top">
+                <span class="fan-rotor-wrap">
+                  <svg class="rotor-svg" id="fan-rotor-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/></svg>
+                  <span id="fan-name-1">Radiator / CPU_FAN</span>
+                </span>
+                <span class="mono" id="fan-rpm-1">1180 RPM · 46%</span>
+              </div>
+              <div class="progress-rail"><div class="progress-fill" id="fan-bar-1" style="width:46%"></div></div>
+            </div>
+            <div class="fan-item" id="fan-row-2">
+              <div class="fan-item-top">
+                <span class="fan-rotor-wrap">
+                  <svg class="rotor-svg" id="fan-rotor-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/></svg>
+                  <span id="fan-name-2">Chassis Intake (SYS_FAN1)</span>
+                </span>
+                <span class="mono" id="fan-rpm-2">980 RPM · 46%</span>
+              </div>
+              <div class="progress-rail"><div class="progress-fill" id="fan-bar-2" style="width:46%"></div></div>
+            </div>
+            <div class="fan-item" id="fan-row-3">
+              <div class="fan-item-top">
+                <span class="fan-rotor-wrap">
+                  <svg class="rotor-svg" id="fan-rotor-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/></svg>
+                  <span id="fan-name-3">GPU Axial Cooler</span>
+                </span>
+                <span class="mono" id="fan-rpm-3">1320 RPM · 46%</span>
+              </div>
+              <div class="progress-rail"><div class="progress-fill" id="fan-bar-3" style="width:46%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Acoustic ceiling -->
+        <div class="tab-pane" id="tab-quiet" style="display:none;">
+          <div class="quiet-section">
+            <div class="qs-head">
+              <div>
+                <h3 class="qs-title" data-i18n="lbl_max_db">Limite de Ruído Máximo</h3>
+                <p class="qs-desc" data-i18n="ac_desc">Mantém o PC silencioso até atingir 84°C de segurança.</p>
+              </div>
+              <label class="fluent-switch">
+                <input type="checkbox" id="acoustic-enabled-toggle" checked />
+                <span class="fluent-track"></span>
+              </label>
+            </div>
+
+            <div class="db-readout-row mono">
+              <div>
+                <span class="text-muted" data-i18n="m_est_noise">Atual:</span>
+                <strong id="acoustic-current-db">-- dBA</strong>
+              </div>
+              <div>
+                <span class="text-muted" data-i18n="m_max_pwm_cap">Limite:</span>
+                <strong id="acoustic-db-label">38.5 dBA</strong>
+                <span class="text-muted">(<span id="acoustic-cap-pwm">--%</span>)</span>
+              </div>
+            </div>
+
+            <div class="detent-slider-wrap">
+              <input type="range" id="acoustic-db-slider" min="30" max="50" step="0.5" value="38.5" />
+              <div class="detent-ticks">
+                <span data-val="34"></span>
+                <span data-val="38.5"></span>
+                <span data-val="43"></span>
+                <span data-val="47"></span>
+              </div>
+            </div>
+
+            <button class="btn-secondary-full press-depth" id="btn-calibrate-acoustic" data-i18n="btn_cal">
+              Calibrar Ruído das Ventoinhas (10s)
+            </button>
+
+            <div class="calibration-drawer" id="calibration-progress-wrap" style="display:none;">
+              <div class="cd-top">
+                <span data-i18n="cal_running">A testar ventoinhas (20% → 100%)...</span>
+                <strong class="mono" id="cal-pct">0%</strong>
+              </div>
+              <div class="progress-rail"><div class="progress-fill" id="cal-bar"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Game process profiles -->
+        <div class="tab-pane" id="tab-games" style="display:none;">
+          <div class="pane-top-row">
+            <span class="pane-subtitle" data-i18n="pred_desc_short">Acelera o arrefecimento assim que um jogo abre</span>
+            <span class="status-pill nominal mono" id="predictive-status-badge">Pronto</span>
+          </div>
+
+          <div class="game-add-bar">
+            <select id="running-exe-picker">
+              <option value="">+ Escolher app aberta...</option>
+            </select>
+            <input type="text" id="new-rule-exe" placeholder="ex: cs2.exe" />
+            <div class="num-box">
+              <input type="number" id="new-rule-pwm" class="mono" value="58" min="25" max="100" />
+              <span>%</span>
+            </div>
+            <button class="btn-add-solid press-depth" id="btn-add-rule">+</button>
+          </div>
+
+          <div class="rules-scroll-list" id="predictive-rules-list"></div>
+        </div>
+
+        <span id="active-exe" style="display:none;"></span>
+        <span id="daemon-ram" style="display:none;"></span>
+        <span id="driver-badge" style="display:none;"></span>
+        <span id="gpu-clock" style="display:none;"></span>
+        <span id="cpu-load" style="display:none;"></span>
+        <span id="bn-cpu-pkg" style="display:none;"></span>
+        <div id="bar-cpu-pkg" style="display:none;"></div>
+        <span id="bn-gpu-pwr" style="display:none;"></span>
+        <div id="bar-gpu-pwr" style="display:none;"></div>
+        <div id="bn-rec" style="display:none;"></div>
+        <span id="hud-hyst-band" style="display:none;"></span>
+        <span id="acoustic-safety-state" style="display:none;"></span>
+      </article>
+    </section>
+  </div>
+
+  <!-- Quick command modal (Ctrl+K) -->
+  <div class="cmd-backdrop" id="cmd-backdrop" style="display:none;">
+    <div class="cmd-dialog" role="dialog" aria-modal="true">
+      <div class="cmd-input-row">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="cmd-search-input" placeholder="Procurar ação (ex: Silencioso, Modo Claro, Hardware, Gaming)..." autocomplete="off" />
+        <kbd class="mono">ESC</kbd>
+      </div>
+      <div class="cmd-list" id="cmd-results-list"></div>
+    </div>
+  </div>
+
+  <!-- Hardware scan modal -->
+  <div class="cmd-backdrop" id="hw-scan-backdrop" style="display:none;">
+    <div class="cmd-dialog hw-scan-dialog" role="dialog" aria-modal="true">
+      <div class="hw-modal-head">
+        <div>
+          <span class="card-eyebrow" data-i18n="hw_modal_kicker">Deteção Automática</span>
+          <h3 class="card-title" data-i18n="hw_modal_title">Componentes do Seu Computador</h3>
+        </div>
+        <div class="hw-modal-actions">
+          <button class="btn-outline-pill press-depth" id="btn-rescan-now" data-i18n="btn_rescan">Atualizar</button>
+          <button class="btn-del" id="btn-close-hw-modal" title="Fechar">&times;</button>
+        </div>
+      </div>
+      <div class="hw-scan-grid" id="hw-scan-body"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

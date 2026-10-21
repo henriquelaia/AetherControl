@@ -1,0 +1,21 @@
+# Build & Runtime Artifacts
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+
+# Local User State & Temporary Scripts
+aether-settings.json
+Publish-To-GitHub.bat
+_publish.ps1
+powershell.bat
+powershell.cmd
+*.log
+*.tmp
+
+# OS Metadata
+Thumbs.db
+.DS_Store
+Desktop.ini
