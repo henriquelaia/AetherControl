@@ -99,6 +99,20 @@ flowchart LR
 - **Aerodynamic Wind Tunnel:** Animated airflow tails visually map cool chassis intake and warm radiator exhaust vectors.
 - **Expanded 3D Inspection Modal:** Click the **`Expandir / Expand`** button (or press `Ctrl + K` $\rightarrow$ *3D Twin*) to open a spacious **540px viewport** with floating telemetry HUD chips, mouse drag orbit rotation, smooth mouse-wheel zoom (`0.9x`–`3.8x`), and instant camera reset.
 
+### 📸 Interface & 3D Digital Twin Gallery
+
+<div align="center">
+
+| Expanded Solid CAD 3D Viewport | Studio Dashboard & Spline Curve |
+| :---: | :---: |
+| <img src="assets/screenshots/dashboard-3d-expanded.png" alt="AetherControl 3D CAD Twin" width="480" /> | <img src="assets/screenshots/dashboard-fan-curve.png" alt="AetherControl Fan Curve Studio" width="480" /> |
+
+| Community Profiles & Modular Plugins | Stark Minimalist Light Theme |
+| :---: | :---: |
+| <img src="assets/screenshots/dashboard-ecosystem.png" alt="AetherControl Community Hub" width="480" /> | <img src="assets/screenshots/dashboard-light-mode.png" alt="AetherControl Light Mode" width="480" /> |
+
+</div>
+
 ---
 
 ## ⚡ Performance & Resource Footprint Benchmark

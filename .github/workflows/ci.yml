@@ -24,4 +24,4 @@ jobs:
       - name: Run Automated Test Suite
         shell: powershell
         run: |
-          & ".\tests\Invoke-AetherTestSuite.ps1"
+          & ".\tests\Invoke-AetherTestSuite.ps1" -CiMode

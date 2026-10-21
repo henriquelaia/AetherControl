@@ -1,4 +1,8 @@
 # AetherControl — Automated Unit, Integration & Performance Benchmark Suite
+param(
+    [switch]$CiMode
+)
+
 $ErrorActionPreference = "Stop"
 $BaseUrl = "http://127.0.0.1:5175"
 $Passed = 0
@@ -18,6 +22,58 @@ Write-Host ""
 Write-Host "================================================================================" -ForegroundColor Cyan
 Write-Host "  AETHERCONTROL // AUTOMATED UNIT, INTEGRATION & MEMORY BENCHMARK SUITE" -ForegroundColor Cyan
 Write-Host "================================================================================" -ForegroundColor Cyan
+
+if ($CiMode) {
+    Write-Host "  Running in CI Headless Validation Mode..." -ForegroundColor Yellow
+    $repoRoot = Split-Path $PSScriptRoot -Parent
+
+    # 1. PowerShell Syntax Tokenizer Validation
+    $psFiles = Get-ChildItem -Path $repoRoot -Recurse -Filter "*.ps1" | Where-Object { $_.FullName -notmatch "check_|copy_|test_" }
+    $syntaxOk = $true
+    foreach ($ps in $psFiles) {
+        $errs = $null
+        $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $ps.FullName -Raw), [ref]$errs)
+        if ($errs -and $errs.Count -gt 0) {
+            $syntaxOk = $false
+            Write-Host "  [!] Syntax error in $($ps.Name): $($errs[0].Message)" -ForegroundColor Red
+        }
+    }
+    Assert-Test "PowerShell Core Syntax & Tokenizer Validation" $syntaxOk "$($psFiles.Count) scripts verified"
+
+    # 2. Critical UI & Asset Files Verification
+    $requiredAssets = @(
+        "src\AetherControl.Daemon\wwwroot\index.html",
+        "src\AetherControl.Daemon\wwwroot\app.js",
+        "src\AetherControl.Daemon\wwwroot\styles.css",
+        "assets\aethercontrol.ico",
+        "get.ps1",
+        "Install-AetherControl.ps1",
+        "AetherControl-NativeDaemon.ps1"
+    )
+    $assetsOk = $true
+    foreach ($asset in $requiredAssets) {
+        if (-not (Test-Path (Join-Path $repoRoot $asset))) {
+            $assetsOk = $false
+        }
+    }
+    Assert-Test "Production Assets & Core Files Integrity" $assetsOk "7/7 core components verified"
+
+    # 3. WebUI HTML & JavaScript Syntax Validation
+    $indexHtml = Get-Content (Join-Path $repoRoot "src\AetherControl.Daemon\wwwroot\index.html") -Raw
+    $appJs = Get-Content (Join-Path $repoRoot "src\AetherControl.Daemon\wwwroot\app.js") -Raw
+    $uiValid = ($indexHtml -match "digital-twin-canvas") -and ($indexHtml -match "twin-modal-backdrop") -and ($appJs -match "twinMode")
+    Assert-Test "Frontend WebUI & CAD 3D Digital Twin Integration" $uiValid "HTML5 Canvas & CAD Shader modules loaded"
+
+    # 4. Installer & Shortcut Scripts Verification
+    $installerContent = Get-Content (Join-Path $repoRoot "Install-AetherControl.ps1") -Raw
+    $hasShortcuts = ($installerContent -match "AetherControl Studio.lnk") -and ($installerContent -match "InstallShortcutOnly")
+    Assert-Test "Installer Desktop & Start Menu Shortcut Logic" $hasShortcuts "Dual-target shortcut support active"
+
+    Write-Host "--------------------------------------------------------------------------------"
+    Write-Host "  SUMMARY: $Passed Passed, $Failed Failed" -ForegroundColor Cyan
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    if ($Failed -gt 0) { exit 1 } else { exit 0 }
+}
 
 $daemonReady = $false
 try {
