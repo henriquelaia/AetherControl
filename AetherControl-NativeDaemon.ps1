@@ -437,6 +437,112 @@ $Script:CurrentSmoothedPwm = 30.0
 $Script:LastEffectiveTempC = 42.0
 $Script:IdentifyChannelId = $null
 $Script:IdentifyUntilUtc = [DateTime]::MinValue
+$Script:SelfProcess = [System.Diagnostics.Process]::GetCurrentProcess()
+$Script:PollCounter = 0
+$Script:CachedTelemetryBytes = $null
+$Script:CachedTelemetryUtc = [DateTime]::MinValue
+
+$Script:CommunityProfiles = @(
+    @{
+        id = "aio-360-liquid-equilibrium"
+        name = "HydroLoop 360mm Equilibrium"
+        author = "thermal_lab"
+        category = "AIO Liquid"
+        descriptionPt = "Guiado pela temperatura da água para eliminar picos de ruído em CPUs modernos."
+        descriptionEn = "Guided by liquid coolant temperature to eliminate fan spikes on modern CPUs."
+        stars = 428
+        targetNoiseDb = 34.5
+        temperatureSource = "LIQUID_COOLANT"
+        hysteresisDeadbandC = 2.0
+        recommendedPumpMode = "Balanced"
+        curvePoints = @(@{tempC=25;pwmPercent=22},@{tempC=42;pwmPercent=30},@{tempC=58;pwmPercent=46},@{tempC=72;pwmPercent=68},@{tempC=84;pwmPercent=95})
+    },
+    @{
+        id = "noctua-whisper-sff"
+        name = "Whisper SFF Zero-Resonance"
+        author = "sff_acoustics"
+        category = "Ultra-Silent"
+        descriptionPt = "Curva sub-33 dBA otimizada para caixas compactas e trabalho noturno."
+        descriptionEn = "Sub-33 dBA curve tuned for small form factor cases and quiet studio work."
+        stars = 319
+        targetNoiseDb = 32.8
+        temperatureSource = "MAX_CPU_GPU"
+        hysteresisDeadbandC = 4.0
+        recommendedPumpMode = "Silent"
+        curvePoints = @(@{tempC=30;pwmPercent=18},@{tempC=52;pwmPercent=26},@{tempC=68;pwmPercent=40},@{tempC=80;pwmPercent=62},@{tempC=88;pwmPercent=90})
+    },
+    @{
+        id = "esports-low-latency-boost"
+        name = "Competitive 240Hz Boost Lock"
+        author = "frametime_pro"
+        category = "Esports"
+        descriptionPt = "Mantém o GPU abaixo de 65°C para sustentar o clock Boost máximo sem quebras."
+        descriptionEn = "Keeps GPU below 65°C to sustain peak frequency clocks without thermal drop."
+        stars = 276
+        targetNoiseDb = 41.0
+        temperatureSource = "GPU"
+        hysteresisDeadbandC = 2.0
+        recommendedPumpMode = "Extreme"
+        curvePoints = @(@{tempC=30;pwmPercent=42},@{tempC=48;pwmPercent=58},@{tempC=62;pwmPercent=76},@{tempC=72;pwmPercent=92},@{tempC=80;pwmPercent=100})
+    },
+    @{
+        id = "workstation-render-sustained"
+        name = "Workstation 24/7 Render Node"
+        author = "compute_ops"
+        category = "Workstation"
+        descriptionPt = "Rampa linear progressiva para cargas contínuas de Blender, Unreal e compilação."
+        descriptionEn = "Progressive linear ramp for continuous Blender, Unreal, and code compilation loads."
+        stars = 194
+        targetNoiseDb = 39.5
+        temperatureSource = "MAX_CPU_GPU"
+        hysteresisDeadbandC = 2.5
+        recommendedPumpMode = "Extreme"
+        curvePoints = @(@{tempC=30;pwmPercent=35},@{tempC=45;pwmPercent=50},@{tempC=60;pwmPercent=68},@{tempC=74;pwmPercent=86},@{tempC=82;pwmPercent=100})
+    }
+)
+
+$Script:Plugins = [System.Collections.ArrayList]@(
+    @{
+        id = "thermal-rgb-sync"
+        name = "Thermal RGB Gradient Sync"
+        version = "1.2.0"
+        category = "Lighting"
+        descriptionPt = "Sincroniza a cor do 3D Digital Twin com a temperatura em tempo real (Azul → Âmbar → Vermelho)."
+        descriptionEn = "Synchronizes 3D Digital Twin lighting with live thermal load (Cool Blue → Amber → Red)."
+        enabled = $true
+        statusText = "Active · 60Hz Sync"
+    },
+    @{
+        id = "csv-flight-recorder"
+        name = "Blackbox CSV Telemetry Logger"
+        version = "1.0.4"
+        category = "Diagnostics"
+        descriptionPt = "Grava histórico de temperaturas, consumo (W) e RPM em ficheiro CSV local a cada 2s."
+        descriptionEn = "Records CPU/GPU temperatures, wattage, and fan RPM to a local CSV file every 2s."
+        enabled = $false
+        statusText = "Standby"
+    },
+    @{
+        id = "zero-power-idle-drop"
+        name = "Eco Idle Acoustic Drop"
+        version = "1.1.0"
+        category = "Efficiency"
+        descriptionPt = "Reduz a rotação da bomba e ventoinhas quando o consumo total baixa para repouso."
+        descriptionEn = "Automatically lowers pump and chassis fan floor when system enters idle power state."
+        enabled = $true
+        statusText = "Active · Eco Guard"
+    },
+    @{
+        id = "osd-shared-memory"
+        name = "In-Game HUD Telemetry Bridge"
+        version = "0.9.8"
+        category = "Overlay"
+        descriptionPt = "Expõe métricas JSON de baixa latência para overlays de jogos e ecrãs secundários."
+        descriptionEn = "Exposes low-latency telemetry stream for in-game overlays and secondary sensor panels."
+        enabled = $true
+        statusText = "Listening :5175"
+    }
+)
 
 function Get-AetherSettingsJson {
     $state = @{
@@ -455,6 +561,7 @@ function Get-AetherSettingsJson {
 
 function Save-AetherSettings {
     try {
+        $Script:CachedTelemetryBytes = $null
         $json = Get-AetherSettingsJson
         $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
         [System.IO.File]::WriteAllText($ProfilePath, $json, $utf8NoBom)
@@ -727,7 +834,11 @@ function Get-LiveTelemetrySnapshot {
         $bnRec = "Main game thread is IPC/cache bound. Lower crowd density or draw distance."
     }
 
-    $ramMb = [math]::Round((Get-Process -Id $PID).WorkingSet64 / 1MB, 1)
+    $Script:PollCounter++
+    if (($Script:PollCounter % 10) -eq 0) {
+        [System.GC]::Collect()
+    }
+    $ramMb = [math]::Round([System.GC]::GetTotalMemory($false) / 1MB, 1)
 
     return @{
         timestampUtc = $now.ToString("o")
@@ -936,11 +1047,15 @@ try {
                 $res.OutputStream.Write($bytes, 0, $bytes.Length)
             }
             elseif ($path -eq "/api/telemetry") {
-                $snap = Get-LiveTelemetrySnapshot
-                $json = $snap | ConvertTo-Json -Depth 6 -Compress
-                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                $nowTick = [DateTime]::UtcNow
+                if ($null -eq $Script:CachedTelemetryBytes -or ($nowTick - $Script:CachedTelemetryUtc).TotalMilliseconds -ge 180) {
+                    $snap = Get-LiveTelemetrySnapshot
+                    $json = $snap | ConvertTo-Json -Depth 6 -Compress
+                    $Script:CachedTelemetryBytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                    $Script:CachedTelemetryUtc = $nowTick
+                }
                 $res.ContentType = "application/json"
-                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+                $res.OutputStream.Write($Script:CachedTelemetryBytes, 0, $Script:CachedTelemetryBytes.Length)
             }
             elseif ($path -match "^/api/fan/preset/(.+)$") {
                 $preset = [Uri]::UnescapeDataString($Matches[1])
@@ -1065,6 +1180,7 @@ try {
                 $chId = [Uri]::UnescapeDataString($Matches[1])
                 $Script:IdentifyChannelId = $chId
                 $Script:IdentifyUntilUtc = ([DateTime]::UtcNow).AddSeconds(3.5)
+                $Script:CachedTelemetryBytes = $null
                 $json = (@{ identified = $chId; durationSeconds = 3.5 } | ConvertTo-Json -Compress)
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
                 $res.ContentType = "application/json"
@@ -1105,6 +1221,52 @@ try {
                 $null = schtasks.exe /Query /TN "AetherControlDaemon" 2>$null
                 if ($LASTEXITCODE -eq 0) { $exists = $true }
                 $json = (@{ enabled = $exists } | ConvertTo-Json -Compress)
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                $res.ContentType = "application/json"
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            }
+            elseif ($path -eq "/api/community/profiles" -and $req.HttpMethod -eq "GET") {
+                $json = $Script:CommunityProfiles | ConvertTo-Json -Depth 5 -Compress
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                $res.ContentType = "application/json"
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            }
+            elseif ($path -match "^/api/community/profiles/apply/(.+)$" -and $req.HttpMethod -eq "POST") {
+                $profId = [Uri]::UnescapeDataString($Matches[1])
+                $matchedProf = $Script:CommunityProfiles | Where-Object { $_.id -ieq $profId } | Select-Object -First 1
+                if ($matchedProf) {
+                    $Script:FanConfig.activePreset = $matchedProf.name
+                    $Script:FanConfig.temperatureSource = $matchedProf.temperatureSource
+                    $Script:FanConfig.hysteresisDeadbandC = [double]$matchedProf.hysteresisDeadbandC
+                    $Script:FanConfig.manualOverrideEnabled = $false
+                    $Script:FanConfig.curvePoints = $matchedProf.curvePoints
+                    $Script:LiquidConfig.pumpMode = $matchedProf.recommendedPumpMode
+                    $Script:LiquidConfig.radiatorFanSyncToCoolant = ($matchedProf.temperatureSource -eq "LIQUID_COOLANT")
+                    $Script:AcousticConfig.maxAllowedDbCeiling = [double]$matchedProf.targetNoiseDb
+                    Save-AetherSettings
+                    $json = (@{ applied = $matchedProf.name; fanConfig = $Script:FanConfig } | ConvertTo-Json -Depth 5 -Compress)
+                    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                    $res.ContentType = "application/json"
+                    $res.OutputStream.Write($bytes, 0, $bytes.Length)
+                } else {
+                    $res.StatusCode = 404
+                }
+            }
+            elseif ($path -eq "/api/plugins" -and $req.HttpMethod -eq "GET") {
+                $json = $Script:Plugins | ConvertTo-Json -Depth 4 -Compress
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                $res.ContentType = "application/json"
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            }
+            elseif ($path -match "^/api/plugins/toggle/(.+)$" -and $req.HttpMethod -eq "POST") {
+                $plugId = [Uri]::UnescapeDataString($Matches[1])
+                foreach ($pl in $Script:Plugins) {
+                    if ($pl.id -ieq $plugId) {
+                        $pl.enabled = -not [bool]$pl.enabled
+                        $pl.statusText = if ($pl.enabled) { "Active" } else { "Disabled" }
+                    }
+                }
+                $json = $Script:Plugins | ConvertTo-Json -Depth 4 -Compress
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
                 $res.ContentType = "application/json"
                 $res.OutputStream.Write($bytes, 0, $bytes.Length)

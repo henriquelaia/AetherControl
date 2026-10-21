@@ -365,9 +365,34 @@
         <div class="tabs-header">
           <div class="segmented-bar full-width-seg" id="right-panel-tabs">
             <div class="seg-thumb"></div>
+            <button class="seg-pill-btn" data-tab="tab-twin" data-i18n="tab_twin">Gémeo 3D</button>
             <button class="seg-pill-btn active" data-tab="tab-fans" data-i18n="tab_fans">Ventoinhas</button>
-            <button class="seg-pill-btn" data-tab="tab-quiet" data-i18n="tab_quiet">Silêncio (dBA)</button>
-            <button class="seg-pill-btn" data-tab="tab-games" data-i18n="tab_games">Modo Jogo</button>
+            <button class="seg-pill-btn" data-tab="tab-quiet" data-i18n="tab_quiet">Silêncio</button>
+            <button class="seg-pill-btn" data-tab="tab-games" data-i18n="tab_games">Jogos</button>
+            <button class="seg-pill-btn" data-tab="tab-ecosystem" data-i18n="tab_eco">Comunidade</button>
+          </div>
+        </div>
+
+        <!-- 3D Digital Twin (Interactive Thermal Heatmap & Airflow) -->
+        <div class="tab-pane" id="tab-twin" style="display:none;">
+          <div class="pane-top-row">
+            <div class="twin-mode-bar">
+              <button class="btn-twin-mode active" data-twin-mode="heatmap" data-i18n="twin_heat">Heatmap</button>
+              <button class="btn-twin-mode" data-twin-mode="airflow" data-i18n="twin_flow">Fluxo Ar</button>
+              <button class="btn-twin-mode" data-twin-mode="wireframe" data-i18n="twin_wire">Wireframe</button>
+            </div>
+            <span class="status-pill nominal mono" id="twin-fps-badge">60 FPS · 3D</span>
+          </div>
+
+          <div class="twin-canvas-wrap">
+            <canvas id="digital-twin-canvas"></canvas>
+            <div class="twin-hover-callout mono" id="twin-hover-pill" style="display:none;"></div>
+            <div class="twin-legend-bar mono">
+              <span class="legend-stop"><i style="background:#06B6D4"></i>35°C</span>
+              <span class="legend-stop"><i style="background:#10B981"></i>55°C</span>
+              <span class="legend-stop"><i style="background:#F59E0B"></i>72°C</span>
+              <span class="legend-stop"><i style="background:#F43F5E"></i>85°C+</span>
+            </div>
           </div>
         </div>
 
@@ -503,6 +528,20 @@
           </div>
 
           <div class="rules-scroll-list" id="predictive-rules-list"></div>
+        </div>
+
+        <!-- Community Profiles & Modular Plugin API -->
+        <div class="tab-pane" id="tab-ecosystem" style="display:none;">
+          <div class="pane-top-row">
+            <div class="twin-mode-bar">
+              <button class="btn-eco-sub active" data-eco="profiles" data-i18n="eco_profiles">Perfis da Comunidade</button>
+              <button class="btn-eco-sub" data-eco="plugins" data-i18n="eco_plugins">Plugins API</button>
+            </div>
+            <span class="status-pill cyan-pill mono" id="eco-count-badge">4 Ativos</span>
+          </div>
+
+          <div class="rules-scroll-list" id="community-profiles-list"></div>
+          <div class="rules-scroll-list" id="plugins-list" style="display:none;"></div>
         </div>
 
         <span id="active-exe" style="display:none;"></span>

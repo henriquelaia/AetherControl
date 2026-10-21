@@ -26,6 +26,8 @@ var watchdog = new PredictiveCoolingWatchdog();
 var acoustic = new AcousticBalanceEngine();
 var bottleneck = new BottleneckAnalyzer();
 var persistence = new SettingsPersistenceService();
+var community = new CommunityProfileService();
+var plugins = new PluginManagerService();
 using var hardware = new HardwareMonitorService(watchdog, acoustic, bottleneck);
 
 persistence.LoadInto(hardware, watchdog, acoustic);
@@ -83,7 +85,11 @@ var backgroundLoop = Task.Run(async () =>
     using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
     while (await timer.WaitForNextTickAsync(daemonCts.Token))
     {
-        try { hardware.PollAndControl(); }
+        try
+        {
+            var snap = hardware.PollAndControl();
+            plugins.OnTelemetryTick(snap);
+        }
         catch { }
     }
 }, daemonCts.Token);
@@ -199,6 +205,29 @@ app.MapGet("/api/profile/export", () =>
 {
     var state = persistence.ExtractState(hardware, watchdog, acoustic);
     return Results.Json(state, jsonOptions);
+});
+
+app.MapGet("/api/community/profiles", () =>
+{
+    return Results.Json(community.GetProfiles(), jsonOptions);
+});
+
+app.MapPost("/api/community/profiles/apply/{id}", (string id) =>
+{
+    var applied = community.ApplyProfile(id, hardware, acoustic);
+    if (applied is null) return Results.NotFound();
+    persistence.SaveFrom(hardware, watchdog, acoustic);
+    return Results.Json(new { applied = applied.Name, fanConfig = hardware.GetFanConfig() }, jsonOptions);
+});
+
+app.MapGet("/api/plugins", () =>
+{
+    return Results.Json(plugins.GetPlugins(), jsonOptions);
+});
+
+app.MapPost("/api/plugins/toggle/{id}", (string id) =>
+{
+    return Results.Json(plugins.TogglePlugin(id), jsonOptions);
 });
 
 app.MapPost("/api/profile/import", async (HttpContext ctx) =>

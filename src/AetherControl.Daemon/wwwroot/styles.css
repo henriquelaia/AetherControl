@@ -887,6 +887,134 @@ canvas {
   color: var(--cyan);
 }
 
+/* 3D Digital Twin & Community/Plugins Ecosystem */
+.twin-mode-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.btn-twin-mode,
+.btn-eco-sub {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-twin-mode.active,
+.btn-eco-sub.active {
+  background: var(--accent-primary);
+  color: var(--accent-inverse);
+  border-color: var(--accent-primary);
+}
+
+.twin-canvas-wrap {
+  position: relative;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  height: 235px;
+  min-height: 235px;
+  max-height: 235px;
+  overflow: hidden;
+  display: flex;
+}
+
+#digital-twin-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+
+#digital-twin-canvas:active {
+  cursor: grabbing;
+}
+
+.twin-hover-callout {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--text-primary);
+  pointer-events: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.twin-legend-bar {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 99px;
+  padding: 3px 10px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.legend-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-stop i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.eco-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eco-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.eco-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.eco-meta {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.eco-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
 .quiet-section {
   display: flex;
   flex-direction: column;

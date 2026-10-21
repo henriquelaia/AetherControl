@@ -124,6 +124,32 @@ public sealed class PersistedUserSettings
     public List<PredictiveRule> PredictiveRules { get; set; } = new();
 }
 
+public sealed record CommunityProfile(
+    string Id,
+    string Name,
+    string Author,
+    string Category,
+    string DescriptionPt,
+    string DescriptionEn,
+    int Stars,
+    double TargetNoiseDb,
+    string TemperatureSource,
+    double HysteresisDeadbandC,
+    string RecommendedPumpMode,
+    List<CurvePoint> CurvePoints
+);
+
+public sealed record AetherPluginInfo(
+    string Id,
+    string Name,
+    string Version,
+    string Category,
+    string DescriptionPt,
+    string DescriptionEn,
+    bool Enabled,
+    string StatusText
+);
+
 public sealed record TelemetrySnapshot(
     DateTime TimestampUtc,
     SystemHardwareIdentity Identity,

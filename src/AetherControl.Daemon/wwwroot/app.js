@@ -158,9 +158,18 @@
       lbl_hyst: 'Suavização',
       guard_floor: 'Evitar Paragem GPU',
       lbl_manual: 'Velocidade Fixa',
+      tab_twin: 'Gémeo 3D',
       tab_fans: 'Ventoinhas',
-      tab_quiet: 'Silêncio (dBA)',
-      tab_games: 'Modo Jogo',
+      tab_quiet: 'Silêncio',
+      tab_games: 'Jogos',
+      tab_eco: 'Comunidade',
+      twin_heat: 'Heatmap',
+      twin_flow: 'Fluxo Ar',
+      twin_wire: 'Wireframe',
+      eco_profiles: 'Perfis da Comunidade',
+      eco_plugins: 'Plugins API',
+      btn_apply_prof: 'Aplicar',
+      btn_applied: 'Ativo',
       lbl_max_db: 'Limite de Ruído Máximo',
       ac_desc: 'Mantém o PC silencioso até atingir 84°C de segurança.',
       m_est_noise: 'Atual:',
@@ -239,9 +248,18 @@
       lbl_hyst: 'Smoothing',
       guard_floor: 'Prevent GPU Fan Stop',
       lbl_manual: 'Fixed Speed',
-      tab_fans: 'Active Fans',
-      tab_quiet: 'Silence (dBA)',
-      tab_games: 'Game Boost',
+      tab_twin: '3D Twin',
+      tab_fans: 'Fans',
+      tab_quiet: 'Silence',
+      tab_games: 'Games',
+      tab_eco: 'Community',
+      twin_heat: 'Heatmap',
+      twin_flow: 'Airflow',
+      twin_wire: 'Wireframe',
+      eco_profiles: 'Community Profiles',
+      eco_plugins: 'Plugin API',
+      btn_apply_prof: 'Apply',
+      btn_applied: 'Applied',
       lbl_max_db: 'Maximum Noise Limit',
       ac_desc: 'Keeps your PC whisper-quiet up to the 84°C safety threshold.',
       m_est_noise: 'Current:',
@@ -296,6 +314,7 @@
 
     if (latestTelemetry) updateDashboard(latestTelemetry);
     loadPredictiveRules();
+    loadEcosystemData();
     setTimeout(syncAllSegmentedThumbs, 20);
   }
 
@@ -1342,6 +1361,487 @@
 
     if (draggingNodeIdx < 0 && curveHoverTempC === null) renderFanCurve();
   }
+
+  // Community Profiles & Modular Plugin API
+  let cachedCommunityProfiles = [];
+  let cachedPlugins = [];
+
+  async function loadEcosystemData() {
+    try {
+      const [profRes, plugRes] = await Promise.all([
+        fetch('/api/community/profiles'),
+        fetch('/api/plugins')
+      ]);
+      if (profRes.ok) {
+        cachedCommunityProfiles = await profRes.json();
+        renderCommunityProfiles();
+      }
+      if (plugRes.ok) {
+        cachedPlugins = await plugRes.json();
+        renderPluginsList();
+      }
+    } catch {}
+  }
+
+  function renderCommunityProfiles() {
+    const listEl = document.getElementById('community-profiles-list');
+    if (!listEl) return;
+    const isEn = currentLang === 'en';
+    const activePreset = currentConfig?.activePreset || '';
+
+    listEl.innerHTML = cachedCommunityProfiles.map((p) => {
+      const isApplied = activePreset === p.name;
+      const desc = isEn ? (p.descriptionEn || p.descriptionPt) : p.descriptionPt;
+      return `
+        <div class="eco-card">
+          <div class="eco-card-top">
+            <div>
+              <span class="eco-title">${p.name}</span>
+              <span class="eco-meta mono"> · @${p.author} · ★ ${p.stars}</span>
+            </div>
+            <button class="btn-fan-test press-depth ${isApplied ? 'testing' : ''}" data-prof-id="${p.id}">
+              ${isApplied ? t('btn_applied') : t('btn_apply_prof')}
+            </button>
+          </div>
+          <div class="eco-desc">${desc} <span class="mono text-muted">(${p.targetNoiseDb} dBA · ${p.category})</span></div>
+        </div>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('[data-prof-id]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-prof-id');
+        try {
+          const res = await fetch(`/api/community/profiles/apply/${encodeURIComponent(id)}`, { method: 'POST' });
+          if (res.ok) {
+            const data = await res.json();
+            currentConfig = data.fanConfig;
+            renderFanCurve();
+            renderCommunityProfiles();
+          }
+        } catch {}
+      });
+    });
+  }
+
+  function renderPluginsList() {
+    const listEl = document.getElementById('plugins-list');
+    const badgeEl = document.getElementById('eco-count-badge');
+    if (!listEl) return;
+    const isEn = currentLang === 'en';
+    const enabledCount = cachedPlugins.filter(p => p.enabled).length;
+    if (badgeEl) {
+      badgeEl.textContent = isEn ? `${enabledCount} Active` : `${enabledCount} Ativos`;
+    }
+
+    listEl.innerHTML = cachedPlugins.map((pl) => {
+      const desc = isEn ? (pl.descriptionEn || pl.descriptionPt) : pl.descriptionPt;
+      return `
+        <div class="eco-card">
+          <div class="eco-card-top">
+            <div>
+              <span class="eco-title">${pl.name}</span>
+              <span class="eco-meta mono"> v${pl.version} · ${pl.statusText}</span>
+            </div>
+            <label class="fluent-switch">
+              <input type="checkbox" data-plugin-id="${pl.id}" ${pl.enabled ? 'checked' : ''} />
+              <span class="fluent-track"></span>
+            </label>
+          </div>
+          <div class="eco-desc">${desc}</div>
+        </div>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('[data-plugin-id]').forEach((chk) => {
+      chk.addEventListener('change', async () => {
+        const id = chk.getAttribute('data-plugin-id');
+        try {
+          const res = await fetch(`/api/plugins/toggle/${encodeURIComponent(id)}`, { method: 'POST' });
+          if (res.ok) {
+            cachedPlugins = await res.json();
+            renderPluginsList();
+          }
+        } catch {}
+      });
+    });
+  }
+
+  document.querySelectorAll('.btn-eco-sub').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.btn-eco-sub').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.getAttribute('data-eco');
+      document.getElementById('community-profiles-list').style.display = mode === 'profiles' ? 'flex' : 'none';
+      document.getElementById('plugins-list').style.display = mode === 'plugins' ? 'flex' : 'none';
+    });
+  });
+
+  // 3D Interactive Digital Twin (Zero-Allocation Thermal Heatmap & Airflow Engine)
+  const twinCanvas = document.getElementById('digital-twin-canvas');
+  const twinHoverPill = document.getElementById('twin-hover-pill');
+  const twinFpsBadge = document.getElementById('twin-fps-badge');
+  let twinMode = 'heatmap';
+  let twinYaw = -0.52;
+  let twinPitch = 0.32;
+  let twinDragging = false;
+  let twinLastX = 0;
+  let twinLastY = 0;
+  let twinPointerX = -1;
+  let twinPointerY = -1;
+  let twinRotorAngleCpu = 0;
+  let twinRotorAngleGpu = 0;
+  let twinRotorAngleSys = 0;
+  let twinFrameCount = 0;
+  let twinLastFpsUpdate = performance.now();
+  let twinLastFrameTime = performance.now();
+
+  // Pre-allocated particle pools (zero GC allocations during animation)
+  const airflowPool = Array.from({ length: 26 }, (_, i) => ({
+    x: -95 + (i * 7.5) % 190,
+    y: -55 + ((i * 23) % 110),
+    z: -35 + ((i * 17) % 70),
+    speed: 0.85 + (i % 5) * 0.14
+  }));
+
+  const coolantPool = Array.from({ length: 10 }, (_, i) => ({
+    t: i / 10
+  }));
+
+  const chassisCorners = [
+    [-105, -75, -52], [105, -75, -52], [105, 75, -52], [-105, 75, -52],
+    [-105, -75,  52], [105, -75,  52], [105, 75,  52], [-105, 75,  52]
+  ];
+  const chassisEdges = [
+    [0,1],[1,2],[2,3],[3,0],
+    [4,5],[5,6],[6,7],[7,4],
+    [0,4],[1,5],[2,6],[3,7]
+  ];
+
+  document.querySelectorAll('.btn-twin-mode').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.btn-twin-mode').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      twinMode = btn.getAttribute('data-twin-mode') || 'heatmap';
+    });
+  });
+
+  if (twinCanvas) {
+    twinCanvas.addEventListener('pointerdown', (e) => {
+      twinDragging = true;
+      twinLastX = e.clientX;
+      twinLastY = e.clientY;
+      twinCanvas.setPointerCapture(e.pointerId);
+    });
+
+    twinCanvas.addEventListener('pointermove', (e) => {
+      const rect = twinCanvas.getBoundingClientRect();
+      twinPointerX = e.clientX - rect.left;
+      twinPointerY = e.clientY - rect.top;
+      if (twinDragging) {
+        const dx = e.clientX - twinLastX;
+        const dy = e.clientY - twinLastY;
+        twinLastX = e.clientX;
+        twinLastY = e.clientY;
+        twinYaw += dx * 0.0085;
+        twinPitch = Math.max(-0.65, Math.min(0.85, twinPitch + dy * 0.0075));
+      }
+    });
+
+    twinCanvas.addEventListener('pointerup', () => { twinDragging = false; });
+    twinCanvas.addEventListener('pointerleave', () => {
+      twinDragging = false;
+      twinPointerX = -1;
+      twinPointerY = -1;
+      if (twinHoverPill) twinHoverPill.style.display = 'none';
+    });
+  }
+
+  function tempToThermalRgb(tempC) {
+    const t = Math.max(25, Math.min(92, tempC));
+    if (t <= 48) {
+      const r = (t - 25) / 23;
+      return [
+        Math.round(6 + r * (16 - 6)),
+        Math.round(182 + r * (185 - 182)),
+        Math.round(212 + r * (129 - 212))
+      ];
+    } else if (t <= 68) {
+      const r = (t - 48) / 20;
+      return [
+        Math.round(16 + r * (245 - 16)),
+        Math.round(185 + r * (158 - 185)),
+        Math.round(129 + r * (11 - 129))
+      ];
+    } else {
+      const r = (t - 68) / 24;
+      return [
+        Math.round(245 + r * (244 - 245)),
+        Math.round(158 + r * (63 - 158)),
+        Math.round(11 + r * (94 - 11))
+      ];
+    }
+  }
+
+  function project3D(x, y, z, cx, cy, cosY, sinY, cosP, sinP) {
+    const rx = x * cosY - z * sinY;
+    const rz1 = x * sinY + z * cosY;
+    const ry = y * cosP - rz1 * sinP;
+    const rz = y * sinP + rz1 * cosP;
+    const fov = 440;
+    const scale = fov / Math.max(120, fov + rz + 210);
+    return {
+      sx: cx + rx * scale,
+      sy: cy + ry * scale,
+      scale,
+      depth: rz
+    };
+  }
+
+  function draw3DFanRotor(ctx, x, y, z, radius, angle, bladeColor, ringColor, cx, cy, cosY, sinY, cosP, sinP, plane) {
+    const center = project3D(x, y, z, cx, cy, cosY, sinY, cosP, sinP);
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    const segs = 20;
+    for (let i = 0; i <= segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      const dx = Math.cos(a) * radius;
+      const dy = Math.sin(a) * radius;
+      const pt = plane === 'yz'
+        ? project3D(x, y + dy, z + dx, cx, cy, cosY, sinY, cosP, sinP)
+        : plane === 'xz'
+          ? project3D(x + dx, y, z + dy, cx, cy, cosY, sinY, cosP, sinP)
+          : project3D(x + dx, y + dy, z, cx, cy, cosY, sinY, cosP, sinP);
+      if (i === 0) ctx.moveTo(pt.sx, pt.sy);
+      else ctx.lineTo(pt.sx, pt.sy);
+    }
+    ctx.stroke();
+
+    const blades = 7;
+    ctx.strokeStyle = bladeColor;
+    ctx.lineWidth = 1.8;
+    for (let b = 0; b < blades; b++) {
+      const ba = angle + (b * Math.PI * 2) / blades;
+      const dx = Math.cos(ba) * (radius * 0.86);
+      const dy = Math.sin(ba) * (radius * 0.86);
+      const tip = plane === 'yz'
+        ? project3D(x, y + dy, z + dx, cx, cy, cosY, sinY, cosP, sinP)
+        : plane === 'xz'
+          ? project3D(x + dx, y, z + dy, cx, cy, cosY, sinY, cosP, sinP)
+          : project3D(x + dx, y + dy, z, cx, cy, cosY, sinY, cosP, sinP);
+      ctx.beginPath();
+      ctx.moveTo(center.sx, center.sy);
+      ctx.lineTo(tip.sx, tip.sy);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = bladeColor;
+    ctx.beginPath();
+    ctx.arc(center.sx, center.sy, 3.2 * center.scale, 0, Math.PI * 2);
+    ctx.fill();
+    return center;
+  }
+
+  function stepDigitalTwin(now) {
+    requestAnimationFrame(stepDigitalTwin);
+
+    const twinPane = document.getElementById('tab-twin');
+    if (!twinCanvas || !twinPane || twinPane.style.display === 'none' || document.hidden) {
+      twinLastFrameTime = now;
+      return;
+    }
+
+    const dt = Math.min(0.05, Math.max(0.001, (now - twinLastFrameTime) / 1000));
+    twinLastFrameTime = now;
+    twinFrameCount++;
+
+    if (now - twinLastFpsUpdate >= 500) {
+      const fps = Math.min(60, Math.round((twinFrameCount * 1000) / (now - twinLastFpsUpdate)));
+      if (twinFpsBadge) twinFpsBadge.textContent = `${fps} FPS · 3D`;
+      twinFrameCount = 0;
+      twinLastFpsUpdate = now;
+    }
+
+    if (!twinDragging) {
+      twinYaw = -0.52 + Math.sin(now * 0.00055) * 0.16;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = twinCanvas.clientWidth || 440;
+    const cssH = twinCanvas.clientHeight || 235;
+    if (twinCanvas.width !== Math.round(cssW * dpr) || twinCanvas.height !== Math.round(cssH * dpr)) {
+      twinCanvas.width = Math.round(cssW * dpr);
+      twinCanvas.height = Math.round(cssH * dpr);
+    }
+
+    const ctx = twinCanvas.getContext('2d');
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const isLight = currentTheme === 'light';
+    const cx = cssW * 0.5;
+    const cy = cssH * 0.52;
+    const cosY = Math.cos(twinYaw), sinY = Math.sin(twinYaw);
+    const cosP = Math.cos(twinPitch), sinP = Math.sin(twinPitch);
+
+    const cpuTemp = latestTelemetry?.cpuTempC ?? 52;
+    const gpuTemp = latestTelemetry?.gpuTempC ?? 46;
+    const coolantTemp = latestTelemetry?.liquidCooling?.coolantTempC ?? 31.6;
+    const pumpRpm = latestTelemetry?.liquidCooling?.pumpRpm ?? 2600;
+    const cpuRpm = latestTelemetry?.fanChannels?.[1]?.currentRpm ?? 1180;
+    const sysRpm = latestTelemetry?.fanChannels?.[2]?.currentRpm ?? 980;
+    const gpuRpm = latestTelemetry?.fanChannels?.[3]?.currentRpm ?? 1320;
+
+    twinRotorAngleCpu += (cpuRpm / 60) * dt * 0.45;
+    twinRotorAngleSys += (sysRpm / 60) * dt * 0.45;
+    twinRotorAngleGpu += (gpuRpm / 60) * dt * 0.45;
+
+    const [cpuR, cpuG, cpuB] = tempToThermalRgb(cpuTemp);
+    const [gpuR, gpuG, gpuB] = tempToThermalRgb(gpuTemp);
+    const [liqR, liqG, liqB] = tempToThermalRgb(coolantTemp + 6);
+
+    const wireStroke = isLight ? 'rgba(15, 23, 42, 0.18)' : 'rgba(255, 255, 255, 0.16)';
+    const projCorners = chassisCorners.map(([x, y, z]) => project3D(x, y, z, cx, cy, cosY, sinY, cosP, sinP));
+
+    // 1. 3D Chassis Frame
+    ctx.strokeStyle = wireStroke;
+    ctx.lineWidth = 1.1;
+    chassisEdges.forEach(([i, j]) => {
+      ctx.beginPath();
+      ctx.moveTo(projCorners[i].sx, projCorners[i].sy);
+      ctx.lineTo(projCorners[j].sx, projCorners[j].sy);
+      ctx.stroke();
+    });
+
+    // 2. 3D CPU Thermal Zone & Waterblock
+    const cpuPos = project3D(-22, -22, -18, cx, cy, cosY, sinY, cosP, sinP);
+    if (twinMode === 'heatmap') {
+      const cpuGrad = ctx.createRadialGradient(cpuPos.sx, cpuPos.sy, 2, cpuPos.sx, cpuPos.sy, 46 * cpuPos.scale);
+      cpuGrad.addColorStop(0, `rgba(${cpuR}, ${cpuG}, ${cpuB}, 0.55)`);
+      cpuGrad.addColorStop(1, `rgba(${cpuR}, ${cpuG}, ${cpuB}, 0.0)`);
+      ctx.fillStyle = cpuGrad;
+      ctx.beginPath();
+      ctx.arc(cpuPos.sx, cpuPos.sy, 46 * cpuPos.scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = `rgb(${cpuR}, ${cpuG}, ${cpuB})`;
+    ctx.fillStyle = isLight ? 'rgba(255,255,255,0.85)' : 'rgba(16,16,20,0.88)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cpuPos.sx, cpuPos.sy, 16 * cpuPos.scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. 3D AIO Liquid Tubes & Flowing Coolant Droplets (CPU Block -> Top Radiator)
+    const radPortA = project3D(-35, -68, -5, cx, cy, cosY, sinY, cosP, sinP);
+    const radPortB = project3D(25, -68, -5, cx, cy, cosY, sinY, cosP, sinP);
+    ctx.strokeStyle = `rgba(${liqR}, ${liqG}, ${liqB}, 0.65)`;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(cpuPos.sx, cpuPos.sy);
+    ctx.quadraticCurveTo(cpuPos.sx + 22, cpuPos.sy - 18, radPortB.sx, radPortB.sy);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cpuPos.sx - 6, cpuPos.sy - 4);
+    ctx.quadraticCurveTo(cpuPos.sx - 24, cpuPos.sy - 26, radPortA.sx, radPortA.sy);
+    ctx.stroke();
+
+    const pumpSpeedFactor = (pumpRpm / 2400) * dt * 0.55;
+    ctx.fillStyle = `rgb(${liqR}, ${liqG}, ${liqB})`;
+    for (let i = 0; i < coolantPool.length; i++) {
+      coolantPool[i].t = (coolantPool[i].t + pumpSpeedFactor) % 1;
+      const u = coolantPool[i].t;
+      const inv = 1 - u;
+      const dx = inv * inv * cpuPos.sx + 2 * inv * u * (cpuPos.sx + 22) + u * u * radPortB.sx;
+      const dy = inv * inv * cpuPos.sy + 2 * inv * u * (cpuPos.sy - 18) + u * u * radPortB.sy;
+      ctx.beginPath();
+      ctx.arc(dx, dy, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 4. 3D GPU Card & Dual-Axial Rotors
+    const gpuCenter = project3D(-10, 26, 8, cx, cy, cosY, sinY, cosP, sinP);
+    if (twinMode === 'heatmap') {
+      const gpuGrad = ctx.createRadialGradient(gpuCenter.sx, gpuCenter.sy, 4, gpuCenter.sx, gpuCenter.sy, 64 * gpuCenter.scale);
+      gpuGrad.addColorStop(0, `rgba(${gpuR}, ${gpuG}, ${gpuB}, 0.52)`);
+      gpuGrad.addColorStop(1, `rgba(${gpuR}, ${gpuG}, ${gpuB}, 0.0)`);
+      ctx.fillStyle = gpuGrad;
+      ctx.beginPath();
+      ctx.arc(gpuCenter.sx, gpuCenter.sy, 64 * gpuCenter.scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const gpuBox = [
+      project3D(-72, 14, -18, cx, cy, cosY, sinY, cosP, sinP),
+      project3D( 48, 14, -18, cx, cy, cosY, sinY, cosP, sinP),
+      project3D( 48, 36,  28, cx, cy, cosY, sinY, cosP, sinP),
+      project3D(-72, 36,  28, cx, cy, cosY, sinY, cosP, sinP)
+    ];
+    ctx.strokeStyle = `rgb(${gpuR}, ${gpuG}, ${gpuB})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(gpuBox[0].sx, gpuBox[0].sy);
+    gpuBox.forEach(p => ctx.lineTo(p.sx, p.sy));
+    ctx.closePath();
+    ctx.stroke();
+
+    draw3DFanRotor(ctx, -38, 28, 12, 19, twinRotorAngleGpu, `rgb(${gpuR}, ${gpuG}, ${gpuB})`, wireStroke, cx, cy, cosY, sinY, cosP, sinP, 'xy');
+    draw3DFanRotor(ctx,  14, 28, 12, 19, -twinRotorAngleGpu, `rgb(${gpuR}, ${gpuG}, ${gpuB})`, wireStroke, cx, cy, cosY, sinY, cosP, sinP, 'xy');
+
+    // 5. Top 240mm AIO Radiator Fans & Front Intake Fans
+    const topFan1 = draw3DFanRotor(ctx, -35, -72, 0, 22, twinRotorAngleCpu, '#06B6D4', wireStroke, cx, cy, cosY, sinY, cosP, sinP, 'xz');
+    draw3DFanRotor(ctx,  25, -72, 0, 22, twinRotorAngleCpu, '#06B6D4', wireStroke, cx, cy, cosY, sinY, cosP, sinP, 'xz');
+    const frontFan1 = draw3DFanRotor(ctx, 102, -26, 0, 24, twinRotorAngleSys, '#10B981', wireStroke, cx, cy, cosY, sinY, cosP, sinP, 'yz');
+    draw3DFanRotor(ctx, 102,  28, 0, 24, twinRotorAngleSys, '#10B981', wireStroke, cx, cy, cosY, sinY, cosP, sinP, 'yz');
+
+    // 6. Volumetric 3D Airflow Streamlines
+    if (twinMode !== 'wireframe') {
+      const flowSpeed = (sysRpm / 1000) * 65 * dt;
+      for (let i = 0; i < airflowPool.length; i++) {
+        const p = airflowPool[i];
+        p.x -= flowSpeed * p.speed;
+        p.y -= flowSpeed * 0.28;
+        if (p.x < -98 || p.y < -70) {
+          p.x = 98;
+          p.y = -45 + ((i * 19) % 95);
+        }
+        const pt = project3D(p.x, p.y, p.z, cx, cy, cosY, sinY, cosP, sinP);
+        const warmRatio = Math.max(0, Math.min(1, (98 - p.x) / 196));
+        const pr = Math.round(6 + warmRatio * (cpuR - 6));
+        const pg = Math.round(182 + warmRatio * (cpuG - 182));
+        const pb = Math.round(212 + warmRatio * (cpuB - 212));
+        ctx.fillStyle = `rgba(${pr}, ${pg}, ${pb}, ${twinMode === 'airflow' ? 0.85 : 0.45})`;
+        ctx.beginPath();
+        ctx.arc(pt.sx, pt.sy, twinMode === 'airflow' ? 2.4 : 1.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 7. Interactive 3D Component Raycast Hover
+    if (twinPointerX >= 0 && twinHoverPill) {
+      const hits = [
+        { name: 'CPU Block', sx: cpuPos.sx, sy: cpuPos.sy, r: 26, text: `CPU: ${cpuTemp.toFixed(0)}°C · ${(latestTelemetry?.cpuPowerWatts ?? 45).toFixed(0)}W` },
+        { name: 'GPU Dual-Axial', sx: gpuCenter.sx, sy: gpuCenter.sy, r: 36, text: `GPU: ${gpuTemp.toFixed(0)}°C · ${gpuRpm.toFixed(0)} RPM` },
+        { name: 'AIO 240mm Radiator', sx: topFan1.sx, sy: topFan1.sy, r: 30, text: `AIO: ${coolantTemp.toFixed(1)}°C · ${pumpRpm.toFixed(0)} RPM` },
+        { name: 'Front Intake', sx: frontFan1.sx, sy: frontFan1.sy, r: 30, text: `Intake: ${sysRpm.toFixed(0)} RPM` }
+      ];
+      const matched = hits.find(h => Math.hypot(twinPointerX - h.sx, twinPointerY - h.sy) <= h.r);
+      if (matched) {
+        twinHoverPill.style.display = 'block';
+        twinHoverPill.textContent = matched.text;
+      } else {
+        twinHoverPill.style.display = 'none';
+      }
+    }
+
+    ctx.restore();
+  }
+
+  requestAnimationFrame(stepDigitalTwin);
 
   let activeWs = null;
 
