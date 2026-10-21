@@ -259,6 +259,25 @@ function Get-ConciseHardwareName([string]$raw, [string]$fallback) {
     return ($clean -replace '\s+', ' ').Trim()
 }
 
+function Invoke-LaptopPowerGovernor([string]$PresetName) {
+    try {
+        $schemeGuid = switch ($PresetName) {
+            "Silent" { "a1841308-3541-4fab-bc81-f71556f20b4a" } # Power Saver / Quiet
+            "Predictive Gaming" { "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" } # High Performance
+            "Heavy Compute" { "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" } # High Performance
+            "Max Cooling" { "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" } # High Performance
+            default { "381b4222-f694-41f0-9685-ff5bb260df2e" } # Balanced
+        }
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = "powercfg.exe"
+        $psi.Arguments = "/setactive $schemeGuid"
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $psi.CreateNoWindow = $true
+        $psi.UseShellExecute = $false
+        [System.Diagnostics.Process]::Start($psi) | Out-Null
+    } catch {}
+}
+
 function Invoke-HardwareTopologyScan {
     $cpuCim = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
     $gpuCim = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "Basic|Remote|Parsec|Virtual" } | Select-Object -First 1
@@ -267,6 +286,24 @@ function Invoke-HardwareTopologyScan {
     $biosCim = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue | Select-Object -First 1
     $osCim = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue | Select-Object -First 1
     $ramSticks = @(Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue)
+    $csCim = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue | Select-Object -First 1
+    $chassisCim = Get-CimInstance Win32_SystemEnclosure -ErrorAction SilentlyContinue | Select-Object -First 1
+    $batteryCim = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
+
+    $isLaptop = $false
+    if ($null -ne $batteryCim) {
+        $isLaptop = $true
+    } elseif ($csCim -and $csCim.PCSystemType -eq 2) {
+        $isLaptop = $true
+    } elseif ($chassisCim -and $chassisCim.ChassisTypes) {
+        foreach ($ct in $chassisCim.ChassisTypes) {
+            if ($ct -in @(8, 9, 10, 11, 12, 14, 18, 21, 30, 31, 32)) {
+                $isLaptop = $true
+                break
+            }
+        }
+    }
+    $formFactor = if ($isLaptop) { "Laptop" } else { "Desktop" }
 
     $cpuFull = if ($cpuCim.Name) { $cpuCim.Name.Trim() } else { "x86_64 Multi-Core Processor" }
     $cpuShort = Get-ConciseHardwareName $cpuFull "CPU"
@@ -321,7 +358,20 @@ function Invoke-HardwareTopologyScan {
     $usbAio = @(Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue | Where-Object {
         $_.Name -match "Kraken|Asetek|Hydro|Commander|AIO|Ryujin|Liquid Freezer" -and $_.Name -notmatch "Audio|Headset|Mouse|Keyboard|Mic"
     } | Select-Object -ExpandProperty Name)
-    $aioController = if ($usbAio.Count -gt 0) { $usbAio[0] } else { "$moboShort Hybrid W_PUMP ($superIoChip)" }
+
+    if ($isLaptop) {
+        $coolingType = "Air"
+        $aioController = "Dual-Blower Vapor Chamber (Embedded Controller ACPI)"
+        $fanCount = 2
+    } elseif ($usbAio.Count -gt 0) {
+        $coolingType = "Liquid"
+        $aioController = $usbAio[0]
+        $fanCount = 4
+    } else {
+        $coolingType = "Liquid"
+        $aioController = "$moboShort Hybrid W_PUMP ($superIoChip)"
+        $fanCount = 4
+    }
 
     $totalRamBytes = ($ramSticks | Measure-Object -Property Capacity -Sum).Sum
     $totalRamGb = if ($totalRamBytes -gt 0) { [int][math]::Round($totalRamBytes / 1GB, 0) } else { 16 }
@@ -372,9 +422,12 @@ function Invoke-HardwareTopologyScan {
             name = $diskName
             tempC = 39
         }
+        formFactor = $formFactor
+        isLaptop = $isLaptop
         cooling = @{
+            type = $coolingType
             controller = $aioController
-            fanCount = 4
+            fanCount = $fanCount
         }
         os = @{
             caption = $osCaption
@@ -412,7 +465,9 @@ $Script:FanConfig = @{
 }
 
 $Script:LiquidConfig = @{
-    enabled = $true
+    enabled = (-not $Script:HardwareTopology.isLaptop)
+    coolingType = $Script:HardwareTopology.cooling.type
+    formFactor = $Script:HardwareTopology.formFactor
     controllerName = $Script:HardwareTopology.cooling.controller
     pumpMode = "Balanced"
     customPumpPwmPercent = 85.0
@@ -792,9 +847,9 @@ function Get-LiveTelemetrySnapshot {
     }
 
     $idPump = ($Script:IdentifyChannelId -eq "AIO_PUMP" -or $Script:IdentifyChannelId -eq "W_PUMP")
-    $idCpu  = ($Script:IdentifyChannelId -eq "CPU_FAN1")
-    $idSys  = ($Script:IdentifyChannelId -eq "SYS_FAN1")
-    $idGpu  = ($Script:IdentifyChannelId -eq "GPU_FAN1")
+    $idCpu  = ($Script:IdentifyChannelId -eq "CPU_FAN1" -or $Script:IdentifyChannelId -eq "CPU_FAN")
+    $idSys  = ($Script:IdentifyChannelId -eq "SYS_FAN1" -or $Script:IdentifyChannelId -eq "SYS_FAN")
+    $idGpu  = ($Script:IdentifyChannelId -eq "GPU_FAN1" -or $Script:IdentifyChannelId -eq "GPU_FAN")
 
     $effPumpPwm = if ($idPump) { 100.0 } else { $pumpPwm }
     $effCpuPwm  = if ($idCpu)  { 100.0 } else { $Script:CurrentSmoothedPwm }
@@ -864,6 +919,13 @@ function Get-LiveTelemetrySnapshot {
 
     return @{
         timestampUtc = $now.ToString("o")
+        formFactor = $hw.formFactor
+        isLaptop = $hw.isLaptop
+        cooling = @{
+            type = $hw.cooling.type
+            controller = $hw.cooling.controller
+            fanCount = $hw.cooling.fanCount
+        }
         identity = @{
             cpuName = $hw.cpu.name
             cpuShortName = $hw.cpu.shortName
@@ -894,22 +956,33 @@ function Get-LiveTelemetrySnapshot {
         gpuVramTotalMb = $vramTotal
         gpuFanPercent = $gpuEffPwm
         motherboardTempC = 38.0
-        fanChannels = @(
-            @{ id = "W_PUMP"; name = "AIO Liquid Pump (W_PUMP)"; currentRpm = $pumpRpm; currentPwmPercent = $effPumpPwm; targetPwmPercent = $effPumpPwm; isHardwareControllable = $true; controlSource = $(if ($idPump) { "Identify Test (100%)" } else { "Pump Mode ($($Script:LiquidConfig.pumpMode))" }) },
-            @{ id = "CPU_FAN1"; name = "Radiator / CPU_FAN ($($hw.motherboard.superIoChip.Split(' ')[0]))"; currentRpm = $cpuRpm; currentPwmPercent = $effCpuPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $(if ($idCpu) { "Identify Test (100%)" } else { $sourceLabel }) },
-            @{ id = "SYS_FAN1"; name = "Chassis Intake ($($hw.motherboard.product))"; currentRpm = $sysRpm; currentPwmPercent = $effSysPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $(if ($idSys) { "Identify Test (100%)" } else { $sourceLabel }) },
-            @{ id = "GPU_FAN1"; name = "$($hw.gpu.shortName) Axial Cooler"; currentRpm = $gpuRpm; currentPwmPercent = $gpuEffPwm; targetPwmPercent = $gpuEffPwm; isHardwareControllable = $true; controlSource = $gpuSourceLabel }
-        )
+        fanChannels = if ($hw.isLaptop) {
+            @(
+                @{ id = "CPU_FAN"; name = "CPU Blower Fan ($($hw.cpu.shortName))"; currentRpm = $cpuRpm; currentPwmPercent = $effCpuPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $true; controlSource = $(if ($idCpu) { "Identify Test (100%)" } else { "EC Thermal Policy ($($Script:FanConfig.activePreset))" }) },
+                @{ id = "GPU_FAN"; name = "GPU Blower Fan ($($hw.gpu.shortName))"; currentRpm = $gpuRpm; currentPwmPercent = $gpuEffPwm; targetPwmPercent = $gpuEffPwm; isHardwareControllable = $true; controlSource = $(if ($idSys -or $idGpu) { "Identify Test (100%)" } else { "EC Thermal Policy ($($Script:FanConfig.activePreset))" }) }
+            )
+        } else {
+            @(
+                @{ id = "W_PUMP"; name = "AIO Liquid Pump (W_PUMP)"; currentRpm = $pumpRpm; currentPwmPercent = $effPumpPwm; targetPwmPercent = $effPumpPwm; isHardwareControllable = $true; controlSource = $(if ($idPump) { "Identify Test (100%)" } else { "Pump Mode ($($Script:LiquidConfig.pumpMode))" }) },
+                @{ id = "CPU_FAN1"; name = "Radiator / CPU_FAN ($($hw.motherboard.superIoChip.Split(' ')[0]))"; currentRpm = $cpuRpm; currentPwmPercent = $effCpuPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $(if ($idCpu) { "Identify Test (100%)" } else { $sourceLabel }) },
+                @{ id = "SYS_FAN1"; name = "Chassis Intake ($($hw.motherboard.product))"; currentRpm = $sysRpm; currentPwmPercent = $effSysPwm; targetPwmPercent = $targetPwm; isHardwareControllable = $hw.os.isAdmin; controlSource = $(if ($idSys) { "Identify Test (100%)" } else { $sourceLabel }) },
+                @{ id = "GPU_FAN1"; name = "$($hw.gpu.shortName) Axial Cooler"; currentRpm = $gpuRpm; currentPwmPercent = $gpuEffPwm; targetPwmPercent = $gpuEffPwm; isHardwareControllable = $true; controlSource = $gpuSourceLabel }
+            )
+        }
         liquidCooling = @{
-            enabled = $Script:LiquidConfig.enabled
-            controllerName = $Script:LiquidConfig.controllerName
+            enabled = (-not $hw.isLaptop -and $Script:LiquidConfig.enabled)
+            coolingType = if ($hw.isLaptop) { "Air" } else { "Liquid" }
+            controllerName = if ($hw.isLaptop) { "Dual-Blower Vapor Chamber" } else { $Script:LiquidConfig.controllerName }
             pumpMode = $Script:LiquidConfig.pumpMode
-            pumpRpm = $pumpRpm
-            pumpPwmPercent = $pumpPwm
-            coolantTempC = $coolantTempC
+            pumpRpm = if ($hw.isLaptop) { 0 } else { $pumpRpm }
+            pumpPwmPercent = if ($hw.isLaptop) { 0 } else { $pumpPwm }
+            coolantTempC = if ($hw.isLaptop) { [math]::Round(($cpuTemp + $gpuTemp) / 2.0, 1) } else { $coolantTempC }
             coolantDeltaOverAmbientC = [math]::Round($coolantTempC - $Script:LiquidConfig.coolantAmbientBaselineC, 1)
+            heatpipeSaturationPct = [math]::Round([math]::Max(10.0, [math]::Min(100.0, (($maxSysTemp - 35.0) / 55.0) * 100.0)), 0)
+            exhaustTempC = [math]::Round($maxSysTemp * 0.72 + 10.0, 1)
             radiatorFanSyncToCoolant = $Script:LiquidConfig.radiatorFanSyncToCoolant
             antiAirlockPulseActive = $Script:LiquidConfig.antiAirlockPulseActive
+            ecGovernorActive = $hw.isLaptop
         }
         gpuGuard = $Script:GpuGuardConfig
         energy = @{
@@ -1048,6 +1121,23 @@ try {
                 if ($req.Url.Query -match "refresh=1") {
                     $Script:HardwareTopology = Invoke-HardwareTopologyScan
                 }
+                if ($req.Url.Query -match "forceFormFactor=(Laptop|Desktop)") {
+                    $forced = $Matches[1]
+                    $Script:HardwareTopology.formFactor = $forced
+                    $Script:HardwareTopology.isLaptop = ($forced -eq "Laptop")
+                    if ($forced -eq "Laptop") {
+                        $Script:HardwareTopology.cooling.type = "Air"
+                        $Script:HardwareTopology.cooling.controller = "Dual-Blower Vapor Chamber (Embedded Controller ACPI)"
+                        $Script:HardwareTopology.cooling.fanCount = 2
+                        $Script:LiquidConfig.enabled = $false
+                    } else {
+                        $Script:HardwareTopology.cooling.type = "Liquid"
+                        $Script:HardwareTopology.cooling.controller = "$($Script:HardwareTopology.motherboard.shortName) Hybrid W_PUMP"
+                        $Script:HardwareTopology.cooling.fanCount = 4
+                        $Script:LiquidConfig.enabled = $true
+                    }
+                    $Script:CachedTelemetryBytes = $null
+                }
                 $json = $Script:HardwareTopology | ConvertTo-Json -Depth 6 -Compress
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
                 $res.ContentType = "application/json"
@@ -1090,11 +1180,22 @@ try {
                     "Max Cooling" { @(@{tempC=25;pwmPercent=100},@{tempC=50;pwmPercent=100},@{tempC=75;pwmPercent=100},@{tempC=90;pwmPercent=100}) }
                     default { @(@{tempC=30;pwmPercent=22},@{tempC=45;pwmPercent=32},@{tempC=60;pwmPercent=50},@{tempC=72;pwmPercent=74},@{tempC=82;pwmPercent=100}) }
                 }
+                if ($Script:HardwareTopology.isLaptop) {
+                    Invoke-LaptopPowerGovernor $preset
+                }
                 Save-AetherSettings
                 $json = $Script:FanConfig | ConvertTo-Json -Depth 5 -Compress
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
                 $res.ContentType = "application/json"
                 $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            }
+            elseif ($path -eq "/api/laptop/governor" -and $req.HttpMethod -eq "POST") {
+                $reader = New-Object System.IO.StreamReader($req.InputStream)
+                $body = $reader.ReadToEnd() | ConvertFrom-Json
+                if ($body -and $body.mode) {
+                    Invoke-LaptopPowerGovernor $body.mode
+                }
+                $res.StatusCode = 200
             }
             elseif ($path -eq "/api/fan/config" -and $req.HttpMethod -eq "POST") {
                 $reader = New-Object System.IO.StreamReader($req.InputStream)

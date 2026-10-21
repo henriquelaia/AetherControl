@@ -178,12 +178,12 @@
         </div>
       </article>
 
-      <!-- Water / AIO cooling -->
+      <!-- Water / AIO or Air Cooling (Laptop / Desktop) -->
       <article class="bento-card hero-card" id="card-water">
         <div class="card-top">
           <div class="card-title-group">
             <div class="card-label-row">
-              <span class="card-eyebrow" data-i18n="liq_kicker">Sistema de Água (AIO)</span>
+              <span class="card-eyebrow" id="cooling-card-eyebrow" data-i18n="liq_kicker">Sistema de Água (AIO)</span>
               <span class="status-pill cyan-pill" id="water-state-chip" data-i18n="water_active">Fluxo Ativo</span>
             </div>
             <h2 class="card-title" id="liquid-ctrl-name">Aether HydroLoop AIO</h2>
@@ -201,11 +201,11 @@
           <div class="hero-temp-display water-temp-color mono-num" id="coolant-temp">31.8°C</div>
           <div class="hero-sub-pills">
             <div class="sub-stat">
-              <span data-i18n="m_pump_spd">Bomba</span>
+              <span id="cooling-stat1-lbl" data-i18n="m_pump_spd">Bomba</span>
               <strong class="mono" id="pump-rpm">2600 RPM</strong>
             </div>
             <div class="sub-stat">
-              <span data-i18n="m_amb_delta">Acima Amb.</span>
+              <span id="cooling-stat2-lbl" data-i18n="m_amb_delta">Acima Amb.</span>
               <strong class="mono" id="coolant-delta">+7.8°C</strong>
             </div>
           </div>
@@ -214,17 +214,17 @@
         <div class="water-footer-box">
           <div class="bar-row">
             <div class="bar-meta">
-              <span data-i18n="m_eq_sat">Saturação Térmica da Água</span>
+              <span id="cooling-sat-lbl" data-i18n="m_eq_sat">Saturação Térmica da Água</span>
               <strong class="mono" id="water-sat-pct">38%</strong>
             </div>
             <div class="progress-rail"><div class="progress-fill water-fill" id="bar-water-sat" style="width: 38%;"></div></div>
           </div>
 
           <div class="water-actions-row">
-            <label class="fluent-switch" title="Usar a temperatura da água para controlar as ventoinhas">
+            <label class="fluent-switch" id="lbl-sync-coolant-wrap" title="Usar a temperatura da água para controlar as ventoinhas">
               <input type="checkbox" id="chk-sync-coolant" />
               <span class="fluent-track"></span>
-              <span class="fluent-lbl" data-i18n="lbl_sync_coolant">Guiar pela água</span>
+              <span class="fluent-lbl" id="cooling-sync-lbl" data-i18n="lbl_sync_coolant">Guiar pela água</span>
             </label>
 
             <button class="btn-water-pulse press-depth" id="btn-airlock-pulse" title="Oscilar bomba para remover bolhas de ar">

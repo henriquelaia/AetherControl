@@ -60,12 +60,13 @@ $rawJson = & $DaemonScript -ScanOnly
 try {
     $hw = $rawJson | ConvertFrom-Json
     Write-Host "  [DETECTED SYSTEM HARDWARE]" -ForegroundColor Green
+    Write-Host "  • Form Factor       : $($hw.formFactor) $(if ($hw.isLaptop) { '(Embedded Controller ACPI)' } else { '(Chassis Super I/O)' })"
     Write-Host "  • Processor (CPU)   : $($hw.cpu.name) ($($hw.cpu.cores) Cores / $($hw.cpu.threads) Threads, ~$($hw.cpu.estimatedTdpW)W TDP)"
     Write-Host "  • Graphics (GPU)    : $($hw.gpu.name) ($($hw.gpu.vramMb) MB VRAM)"
     Write-Host "  • Telemetry Driver  : $($hw.gpu.driver)"
     Write-Host "  • Motherboard       : $($hw.motherboard.name)"
     Write-Host "  • Super I/O & PWM   : $($hw.motherboard.superIoChip) (BIOS: $($hw.motherboard.biosVersion))"
-    Write-Host "  • Cooling Loop      : $($hw.cooling.controller)"
+    Write-Host "  • Cooling Matrix    : $($hw.cooling.controller) ($($hw.cooling.type) Cooling, $($hw.cooling.fanCount) Channels)"
     Write-Host "  • System Memory     : $($hw.memory.totalGb) GB RAM @ $($hw.memory.speedMhz) MHz"
     Write-Host "  • Operating System  : $($hw.os.caption) (Admin=$($hw.os.isAdmin))"
 } catch {

@@ -132,6 +132,15 @@
       m_vram_used: 'VRAM',
       hist_60s: 'Últimos 60s',
       liq_kicker: 'Sistema de Água (AIO)',
+      air_kicker: 'Arrefecimento por Ar & Heatpipes',
+      air_title: 'Dissipação Térmica e Heatpipes',
+      air_active: 'Dissipação Ativa',
+      laptop_gov_badge: 'Governador EC Portátil',
+      m_air_exhaust: 'Exaustão',
+      m_blower_avg: 'Ventoinhas',
+      m_heatpipe_sat: 'Carga dos Heatpipes',
+      lbl_sync_heatpipe: 'Guiar por Carga Térmica',
+      btn_ec_boost: 'Boost Térmico EC',
       water_active: 'Fluxo Ativo',
       water_purging: 'A Purgar Ar',
       pump_silent: 'Calmo',
@@ -228,6 +237,15 @@
       m_vram_used: 'VRAM',
       hist_60s: 'Last 60s',
       liq_kicker: 'Water System (AIO)',
+      air_kicker: 'Air Cooling & Heatpipes',
+      air_title: 'Thermal Dissipation & Heatpipes',
+      air_active: 'Active Dissipation',
+      laptop_gov_badge: 'Laptop EC Governor',
+      m_air_exhaust: 'Exhaust',
+      m_blower_avg: 'Blowers',
+      m_heatpipe_sat: 'Heatpipe Thermal Load',
+      lbl_sync_heatpipe: 'Guide by Thermal Load',
+      btn_ec_boost: 'EC Thermal Boost',
       water_active: 'Active Flow',
       water_purging: 'Purging Air',
       pump_silent: 'Quiet',
@@ -1087,11 +1105,20 @@
   });
 
   document.getElementById('btn-airlock-pulse').addEventListener('click', async () => {
-    await fetch('/api/liquid/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ triggerAntiAirlockPulse: true })
-    });
+    if (latestTelemetry?.isLaptop) {
+      await fetch('/api/laptop/governor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'Max Cooling' })
+      });
+      triggerPreset('Max Cooling');
+    } else {
+      await fetch('/api/liquid/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ triggerAntiAirlockPulse: true })
+      });
+    }
   });
 
   async function pushGpuGuardConfig() {
@@ -1274,30 +1301,80 @@
 
     if (snap.liquidCooling) {
       const lq = snap.liquidCooling;
+      const isAir = snap.isLaptop || lq.coolingType === 'Air' || !lq.enabled;
       const coolantC = Number(lq.coolantTempC ?? 31.8);
-      const pumpRpmVal = Number(lq.pumpRpm ?? 2400);
       const deltaAmb = Number(lq.coolantDeltaOverAmbientC ?? lq.ambientDeltaC ?? Math.max(2.0, coolantC - 25.5));
-
-      document.getElementById('liquid-ctrl-name').textContent = lq.controllerName || 'Aether HydroLoop AIO';
-      document.getElementById('coolant-temp').textContent = `${coolantC.toFixed(1)}°C`;
-      document.getElementById('pump-rpm').textContent = `${pumpRpmVal.toFixed(0)} RPM`;
-      document.getElementById('coolant-delta').textContent = `+${deltaAmb.toFixed(1)}°C`;
-
-      const satPct = Math.round(lq.thermalEquilibriumPct ?? Math.min(100, Math.max(12, ((coolantC - 24) / 22) * 100)));
-      document.getElementById('water-sat-pct').textContent = `${satPct}%`;
-      document.getElementById('bar-water-sat').style.width = `${satPct}%`;
-
+      const eyeEl = document.getElementById('cooling-card-eyebrow');
+      const stat1Lbl = document.getElementById('cooling-stat1-lbl');
+      const stat2Lbl = document.getElementById('cooling-stat2-lbl');
+      const satLbl = document.getElementById('cooling-sat-lbl');
+      const syncWrap = document.getElementById('lbl-sync-coolant-wrap');
+      const syncLbl = document.getElementById('cooling-sync-lbl');
       const waterChip = document.getElementById('water-state-chip');
       const airBtn = document.getElementById('btn-airlock-pulse');
       const airTxt = document.getElementById('airlock-btn-text');
-      if (lq.antiAirlockPulseActive) {
-        waterChip.textContent = t('water_purging');
-        airBtn.classList.add('pulsing');
-        if (airTxt) airTxt.textContent = t('btn_airlock_active');
+
+      if (isAir) {
+        if (eyeEl) eyeEl.textContent = t('air_kicker');
+        document.getElementById('liquid-ctrl-name').textContent = lq.controllerName || (snap.isLaptop ? 'Dual-Blower Vapor Chamber' : 'Air Cooler & Heatpipes');
+
+        const exhaustTemp = Number(lq.exhaustTempC ?? snap.cpuTempC);
+        document.getElementById('coolant-temp').textContent = `${exhaustTemp.toFixed(1)}°C`;
+
+        const blowerRpm = snap.fanChannels?.length > 0 ? (snap.fanChannels[0].currentRpm || 1850) : 1850;
+        if (stat1Lbl) stat1Lbl.textContent = t('m_blower_avg');
+        document.getElementById('pump-rpm').textContent = `${Number(blowerRpm).toFixed(0)} RPM`;
+
+        if (stat2Lbl) stat2Lbl.textContent = t('m_amb_delta');
+        document.getElementById('coolant-delta').textContent = `+${deltaAmb.toFixed(1)}°C`;
+
+        const satPct = Math.round(lq.heatpipeSaturationPct ?? Math.min(100, Math.max(12, ((exhaustTemp - 30) / 45) * 100)));
+        if (satLbl) satLbl.textContent = t('m_heatpipe_sat');
+        document.getElementById('water-sat-pct').textContent = `${satPct}%`;
+        document.getElementById('bar-water-sat').style.width = `${satPct}%`;
+
+        if (snap.isLaptop) {
+          waterChip.className = 'status-pill cyan-pill';
+          waterChip.textContent = t('laptop_gov_badge');
+        } else {
+          waterChip.className = 'status-pill nominal';
+          waterChip.textContent = t('air_active');
+        }
+
+        if (syncWrap) syncWrap.style.display = 'none';
+        if (airBtn) {
+          airBtn.classList.remove('pulsing');
+          if (airTxt) airTxt.textContent = t('btn_ec_boost');
+        }
       } else {
-        waterChip.textContent = t('water_active');
-        airBtn.classList.remove('pulsing');
-        if (airTxt) airTxt.textContent = t('btn_airlock');
+        if (eyeEl) eyeEl.textContent = t('liq_kicker');
+        const pumpRpmVal = Number(lq.pumpRpm ?? 2400);
+        document.getElementById('liquid-ctrl-name').textContent = lq.controllerName || 'Aether HydroLoop AIO';
+        document.getElementById('coolant-temp').textContent = `${coolantC.toFixed(1)}°C`;
+        if (stat1Lbl) stat1Lbl.textContent = t('m_pump_spd');
+        document.getElementById('pump-rpm').textContent = `${pumpRpmVal.toFixed(0)} RPM`;
+        if (stat2Lbl) stat2Lbl.textContent = t('m_amb_delta');
+        document.getElementById('coolant-delta').textContent = `+${deltaAmb.toFixed(1)}°C`;
+
+        const satPct = Math.round(lq.thermalEquilibriumPct ?? Math.min(100, Math.max(12, ((coolantC - 24) / 22) * 100)));
+        if (satLbl) satLbl.textContent = t('m_eq_sat');
+        document.getElementById('water-sat-pct').textContent = `${satPct}%`;
+        document.getElementById('bar-water-sat').style.width = `${satPct}%`;
+
+        if (syncWrap) syncWrap.style.display = 'flex';
+        if (syncLbl) syncLbl.textContent = t('lbl_sync_coolant');
+
+        if (lq.antiAirlockPulseActive) {
+          waterChip.className = 'status-pill warning';
+          waterChip.textContent = t('water_purging');
+          airBtn.classList.add('pulsing');
+          if (airTxt) airTxt.textContent = t('btn_airlock_active');
+        } else {
+          waterChip.className = 'status-pill cyan-pill';
+          waterChip.textContent = t('water_active');
+          airBtn.classList.remove('pulsing');
+          if (airTxt) airTxt.textContent = t('btn_airlock');
+        }
       }
     }
 
@@ -1320,7 +1397,7 @@
     updateProgressBar('bar-vram', bn.vramUsagePercent);
 
     document.getElementById('mobo-name').textContent = moboShort;
-    const primaryPwm = snap.fanChannels.length > 1 ? snap.fanChannels[1].targetPwmPercent : 0;
+    const primaryPwm = snap.fanChannels && snap.fanChannels.length > 0 ? snap.fanChannels[Math.min(1, snap.fanChannels.length - 1)].targetPwmPercent : 0;
     document.getElementById('target-pwm-badge').textContent = `${primaryPwm.toFixed(0)}% PWM`;
 
     const fanList = document.getElementById('fan-channels-list');
@@ -1976,47 +2053,79 @@
     ctx.arc(cpuPos.sx, cpuPos.sy, blockR * 0.72, 0, Math.PI * 2);
     ctx.fill();
 
-    // 5. Braided AIO Coolant Hoses & Fluid Droplets (CPU -> Top Radiator)
-    const radPortA = project3D(-35, -68, -5, cx, cy, cosY, sinY, cosP, sinP, zoom);
-    const radPortB = project3D( 25, -68, -5, cx, cy, cosY, sinY, cosP, sinP, zoom);
+    // 5. Liquid Hoses or Copper Heatpipe Subsystem
+    const isAirCooling = latestTelemetry?.isLaptop || latestTelemetry?.liquidCooling?.coolingType === 'Air' || latestTelemetry?.liquidCooling?.enabled === false;
 
-    ctx.strokeStyle = isLight ? 'rgba(15, 23, 42, 0.8)' : 'rgba(38, 42, 54, 0.95)';
-    ctx.lineWidth = Math.max(3, 4.2 * cpuPos.scale * zoom);
-    ctx.beginPath();
-    ctx.moveTo(cpuPos.sx + 4, cpuPos.sy);
-    ctx.quadraticCurveTo(cpuPos.sx + 26, cpuPos.sy - 22, radPortB.sx, radPortB.sy);
-    ctx.stroke();
+    if (isAirCooling) {
+      // Direct Copper Heatpipes (CPU & GPU -> Heatsink fin stacks)
+      const finStackA = project3D(-75, -55, -28, cx, cy, cosY, sinY, cosP, sinP, zoom);
+      const finStackB = project3D( 65, -55, -28, cx, cy, cosY, sinY, cosP, sinP, zoom);
 
-    ctx.beginPath();
-    ctx.moveTo(cpuPos.sx - 8, cpuPos.sy - 4);
-    ctx.quadraticCurveTo(cpuPos.sx - 26, cpuPos.sy - 28, radPortA.sx, radPortA.sy);
-    ctx.stroke();
+      ctx.strokeStyle = '#D97706'; // Burnished Heatpipe Copper
+      ctx.lineWidth = Math.max(3.2, 4.5 * cpuPos.scale * zoom);
 
-    // Fluid Pulse Core
-    ctx.strokeStyle = `rgba(${liqR}, ${liqG}, ${liqB}, 0.85)`;
-    ctx.lineWidth = Math.max(1.4, 2.0 * cpuPos.scale * zoom);
-    ctx.beginPath();
-    ctx.moveTo(cpuPos.sx + 4, cpuPos.sy);
-    ctx.quadraticCurveTo(cpuPos.sx + 26, cpuPos.sy - 22, radPortB.sx, radPortB.sy);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(cpuPos.sx - 8, cpuPos.sy - 4);
-    ctx.quadraticCurveTo(cpuPos.sx - 26, cpuPos.sy - 28, radPortA.sx, radPortA.sy);
-    ctx.stroke();
-
-    // Flowing fluid particles
-    const pumpSpeedFactor = (pumpRpm / 2400) * dt * 0.55;
-    ctx.fillStyle = `rgb(${liqR}, ${liqG}, ${liqB})`;
-    for (let i = 0; i < coolantPool.length; i++) {
-      coolantPool[i].t = (coolantPool[i].t + pumpSpeedFactor) % 1;
-      const u = coolantPool[i].t;
-      const inv = 1 - u;
-      const dx = inv * inv * (cpuPos.sx + 4) + 2 * inv * u * (cpuPos.sx + 26) + u * u * radPortB.sx;
-      const dy = inv * inv * cpuPos.sy + 2 * inv * u * (cpuPos.sy - 22) + u * u * radPortB.sy;
+      // Pipe 1 (CPU to Left Fin Stack)
       ctx.beginPath();
-      ctx.arc(dx, dy, Math.max(2, 2.8 * cpuPos.scale * zoom), 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(cpuPos.sx - 8, cpuPos.sy);
+      ctx.quadraticCurveTo(cpuPos.sx - 42, cpuPos.sy - 15, finStackA.sx, finStackA.sy);
+      ctx.stroke();
+
+      // Pipe 2 (CPU to Right Fin Stack)
+      ctx.beginPath();
+      ctx.moveTo(cpuPos.sx + 8, cpuPos.sy);
+      ctx.quadraticCurveTo(cpuPos.sx + 38, cpuPos.sy - 15, finStackB.sx, finStackB.sy);
+      ctx.stroke();
+
+      // Pipe 3 (Cross Vapor Chamber Bridge)
+      ctx.strokeStyle = '#B45309';
+      ctx.lineWidth = Math.max(2.2, 3.2 * cpuPos.scale * zoom);
+      ctx.beginPath();
+      ctx.moveTo(cpuPos.sx - 6, cpuPos.sy + 6);
+      ctx.lineTo(cpuPos.sx + 6, cpuPos.sy + 6);
+      ctx.stroke();
+    } else {
+      // 5. Braided AIO Coolant Hoses & Fluid Droplets (CPU -> Top Radiator)
+      const radPortA = project3D(-35, -68, -5, cx, cy, cosY, sinY, cosP, sinP, zoom);
+      const radPortB = project3D( 25, -68, -5, cx, cy, cosY, sinY, cosP, sinP, zoom);
+
+      ctx.strokeStyle = isLight ? 'rgba(15, 23, 42, 0.8)' : 'rgba(38, 42, 54, 0.95)';
+      ctx.lineWidth = Math.max(3, 4.2 * cpuPos.scale * zoom);
+      ctx.beginPath();
+      ctx.moveTo(cpuPos.sx + 4, cpuPos.sy);
+      ctx.quadraticCurveTo(cpuPos.sx + 26, cpuPos.sy - 22, radPortB.sx, radPortB.sy);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(cpuPos.sx - 8, cpuPos.sy - 4);
+      ctx.quadraticCurveTo(cpuPos.sx - 26, cpuPos.sy - 28, radPortA.sx, radPortA.sy);
+      ctx.stroke();
+
+      // Fluid Pulse Core
+      ctx.strokeStyle = `rgba(${liqR}, ${liqG}, ${liqB}, 0.85)`;
+      ctx.lineWidth = Math.max(1.4, 2.0 * cpuPos.scale * zoom);
+      ctx.beginPath();
+      ctx.moveTo(cpuPos.sx + 4, cpuPos.sy);
+      ctx.quadraticCurveTo(cpuPos.sx + 26, cpuPos.sy - 22, radPortB.sx, radPortB.sy);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(cpuPos.sx - 8, cpuPos.sy - 4);
+      ctx.quadraticCurveTo(cpuPos.sx - 26, cpuPos.sy - 28, radPortA.sx, radPortA.sy);
+      ctx.stroke();
+
+      // Flowing fluid particles
+      const pumpSpeedFactor = (pumpRpm / 2400) * dt * 0.55;
+      ctx.fillStyle = `rgb(${liqR}, ${liqG}, ${liqB})`;
+      for (let i = 0; i < coolantPool.length; i++) {
+        coolantPool[i].t = (coolantPool[i].t + pumpSpeedFactor) % 1;
+        const u = coolantPool[i].t;
+        const inv = 1 - u;
+        const dx = inv * inv * (cpuPos.sx + 4) + 2 * inv * u * (cpuPos.sx + 26) + u * u * radPortB.sx;
+        const dy = inv * inv * cpuPos.sy + 2 * inv * u * (cpuPos.sy - 22) + u * u * radPortB.sy;
+        ctx.beginPath();
+        ctx.arc(dx, dy, Math.max(2, 2.8 * cpuPos.scale * zoom), 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // 6. Solid GPU Card & Dual Axial Rotors

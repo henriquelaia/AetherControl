@@ -98,25 +98,27 @@ Assert-Test "Hardware Auto-Scanner (CPU/GPU/RAM/Storage/SuperIO)" (
     -not [string]::IsNullOrWhiteSpace($hw.cpu.name) -and
     -not [string]::IsNullOrWhiteSpace($hw.gpu.name) -and
     $hw.memory.totalGb -ge 1 -and
-    -not [string]::IsNullOrWhiteSpace($hw.storage.name)
-) "$($hw.cpu.shortName) | $($hw.gpu.shortName) | $($hw.memory.totalGb)GB RAM | $($hw.storage.name)"
+    -not [string]::IsNullOrWhiteSpace($hw.storage.name) -and
+    ($hw.formFactor -eq "Desktop" -or $hw.formFactor -eq "Laptop")
+) "$($hw.cpu.shortName) | $($hw.gpu.shortName) | $($hw.memory.totalGb)GB RAM | FormFactor=$($hw.formFactor)"
 
 # 2. Live Telemetry Sensor Polling & Schema Binding
 $snap = Invoke-RestMethod -Uri "$BaseUrl/api/telemetry" -Method Get
-Assert-Test "Real-Time Telemetry Snapshot & 4-Channel PWM Binding" (
+Assert-Test "Real-Time Telemetry Snapshot & PWM Channel Binding" (
     $snap.cpuTempC -gt 10 -and
     $snap.gpuTempC -gt 10 -and
-    $snap.liquidCooling.coolantTempC -gt 15 -and
-    $snap.fanChannels.Count -ge 4
-) "CPU=$($snap.cpuTempC)C, GPU=$($snap.gpuTempC)C, Coolant=$($snap.liquidCooling.coolantTempC)C"
+    $snap.fanChannels.Count -ge 2
+) "CPU=$($snap.cpuTempC)C, GPU=$($snap.gpuTempC)C, Channels=$($snap.fanChannels.Count), FormFactor=$($snap.formFactor)"
 
 # 3. Per-Channel Fan Identification Override (100% Spin-Up Test)
-$idRes = Invoke-RestMethod -Uri "$BaseUrl/api/fan/identify/CPU_FAN1" -Method Post
+$targetChan = if ($snap.isLaptop) { "CPU_FAN" } else { "CPU_FAN1" }
+$idRes = Invoke-RestMethod -Uri "$BaseUrl/api/fan/identify/$targetChan" -Method Post
 $snapId = Invoke-RestMethod -Uri "$BaseUrl/api/telemetry" -Method Get
+$identItem = $snapId.fanChannels | Where-Object { $_.id -eq $targetChan } | Select-Object -First 1
 Assert-Test "Per-Channel Fan Identify Spin-Up Override (100%)" (
-    $idRes.identified -eq "CPU_FAN1" -and
-    $snapId.fanChannels[1].currentPwmPercent -eq 100
-) "Channel=CPU_FAN1, ForcedPWM=$($snapId.fanChannels[1].currentPwmPercent)%"
+    $idRes.identified -eq $targetChan -and
+    $identItem.currentPwmPercent -eq 100
+) "Channel=$targetChan, ForcedPWM=$($identItem.currentPwmPercent)%"
 
 # 4. Community Profiles Catalog & 1-Click Application
 $profiles = Invoke-RestMethod -Uri "$BaseUrl/api/community/profiles" -Method Get
@@ -163,6 +165,22 @@ $ramDelta = [math]::Round($ramEnd - $ramStart, 1)
 Assert-Test "Telemetry Polling Latency & Zero Memory Leak Benchmark" (
     $avgMs -lt 25.0 -and [math]::Abs($ramDelta) -le 2.5
 ) "AvgLatency=${avgMs}ms/req, StartRAM=${ramStart}MB, EndRAM=${ramEnd}MB, Delta=${ramDelta}MB"
+
+# 8. Intelligent Laptop vs Desktop Topology & ACPI EC Governor Verification
+$laptopHw = Invoke-RestMethod -Uri "$BaseUrl/api/hardware/scan?refresh=1&forceFormFactor=Laptop" -Method Get
+$laptopSnap = Invoke-RestMethod -Uri "$BaseUrl/api/telemetry" -Method Get
+$null = Invoke-RestMethod -Uri "$BaseUrl/api/laptop/governor" -Method Post -Body '{"mode":"Silent"}' -ContentType "application/json"
+Assert-Test "Intelligent Laptop Topology & ACPI EC Governor Verification" (
+    $laptopHw.formFactor -eq "Laptop" -and
+    $laptopHw.isLaptop -eq $true -and
+    $laptopSnap.fanChannels.Count -eq 2 -and
+    $laptopSnap.fanChannels[0].id -eq "CPU_FAN" -and
+    $laptopSnap.fanChannels[1].id -eq "GPU_FAN" -and
+    $laptopSnap.liquidCooling.enabled -eq $false
+) "Laptop Mode: FormFactor=Laptop, Channels=2 (CPU/GPU Blower), AirCooling=Active"
+
+# Restore native topology
+$null = Invoke-RestMethod -Uri "$BaseUrl/api/hardware/scan?refresh=1&forceFormFactor=Desktop" -Method Get
 
 Write-Host "--------------------------------------------------------------------------------"
 Write-Host "  SUMMARY: $Passed Passed, $Failed Failed" -ForegroundColor $(if ($Failed -eq 0) { "Green" } else { "Red" })
