@@ -18,8 +18,11 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Restore NuGet Packages
+        run: dotnet restore src/AetherControl.Daemon/AetherControl.Daemon.csproj -r win-x64
+
       - name: Build C# Daemon Project
-        run: dotnet build src/AetherControl.Daemon/AetherControl.Daemon.csproj -c Release
+        run: dotnet build src/AetherControl.Daemon/AetherControl.Daemon.csproj -c Release -r win-x64 --no-restore
 
       - name: Run Automated Test Suite
         shell: powershell
