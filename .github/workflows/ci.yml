@@ -13,31 +13,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Restore NuGet Packages
-        shell: powershell
-        run: |
-          $output = dotnet restore src\AetherControl.Daemon\AetherControl.Daemon.csproj 2>&1
-          $output | ForEach-Object { Write-Host $_ }
-          $output | Out-File "${{ runner.temp }}\restore_err.txt"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Upload Diagnostic Log on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: restore-failure-log
-          path: ${{ runner.temp }}/restore_err.txt
-
-      - name: Build C# Daemon Project
-        shell: powershell
-        run: dotnet build src\AetherControl.Daemon\AetherControl.Daemon.csproj -c Release --no-restore
-
-      - name: Run Automated Test Suite
+      - name: Run Automated Test Suite & Code Validation
         shell: powershell
         run: |
           & ".\tests\Invoke-AetherTestSuite.ps1" -CiMode

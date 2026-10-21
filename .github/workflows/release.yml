@@ -9,29 +9,25 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
+  package-release:
     runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Restore NuGet Packages
+      - name: Package Portable Windows Release
         shell: powershell
-        run: dotnet restore src\AetherControl.Daemon\AetherControl.Daemon.csproj --configfile nuget.config -v normal
-
-      - name: Publish Self-Contained Windows x64 Binary
-        shell: powershell
-        run: dotnet publish src/AetherControl.Daemon/AetherControl.Daemon.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/AetherControl
-
-      - name: Package Release Archive
         run: |
-          Copy-Item -Path "Launch-AetherControl.bat","Install-AetherControl.ps1","AetherControl-NativeDaemon.ps1","README.md","LICENSE" -Destination "publish/AetherControl" -Force
-          Compress-Archive -Path "publish/AetherControl/*" -DestinationPath "AetherControl-win-x64.zip" -Force
+          $pkgDir = "release_pkg/AetherControl"
+          New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
+          
+          # Copy core launcher scripts and assets
+          Copy-Item -Path "Launch-AetherControl.bat", "Criar-Atalho-Ambiente-Trabalho.bat", "Create-Desktop-Shortcut.bat", "Install-AetherControl.ps1", "AetherControl-NativeDaemon.ps1", "Stop-AetherControl.bat", "GUIA_RAPIDO.md", "README.md", "LICENSE" -Destination $pkgDir -Force
+          Copy-Item -Path "assets" -Destination $pkgDir -Recurse -Force
+          Copy-Item -Path "docs" -Destination $pkgDir -Recurse -Force
+          Copy-Item -Path "src" -Destination $pkgDir -Recurse -Force
+
+          Compress-Archive -Path "$pkgDir/*" -DestinationPath "AetherControl-win-x64.zip" -Force
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
