@@ -20,7 +20,18 @@ jobs:
 
       - name: Restore NuGet Packages
         shell: powershell
-        run: dotnet restore src\AetherControl.Daemon\AetherControl.Daemon.csproj --configfile nuget.config -v normal
+        run: |
+          $output = dotnet restore src\AetherControl.Daemon\AetherControl.Daemon.csproj 2>&1
+          $output | ForEach-Object { Write-Host $_ }
+          $output | Out-File "${{ runner.temp }}\restore_err.txt"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Diagnostic Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-failure-log
+          path: ${{ runner.temp }}/restore_err.txt
 
       - name: Build C# Daemon Project
         shell: powershell
